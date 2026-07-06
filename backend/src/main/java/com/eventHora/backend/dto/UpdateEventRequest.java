@@ -46,18 +46,10 @@ public class UpdateEventRequest {
     private Integer maxTicketsPerMember;
 
     @Min(value = 0, message = "Free tickets cannot be negative")
-    private Integer freeTicketsPerMember;
+    private Integer freeTicketsPerRegistration;
 
-    @DecimalMin(value = "0.0", message = "Member ticket price cannot be negative")
-    private BigDecimal memberTicketPrice;
-
-    private Boolean guestsAllowed;
-
-    @Min(value = 0, message = "Max guests cannot be negative")
-    private Integer maxGuestsPerMember;
-
-    @DecimalMin(value = "0.0", message = "Guest ticket price cannot be negative")
-    private BigDecimal guestTicketPrice;
+    @DecimalMin(value = "0.0", message = "Ticket price cannot be negative")
+    private BigDecimal ticketPrice;               // Unified price per paid ticket
 
     @DecimalMin(value = "0.0", message = "Platform fee cannot be negative")
     private BigDecimal platformFeePerTicket;

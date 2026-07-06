@@ -43,15 +43,10 @@ public class PublicEventResponse {
     private String venue;
     private String additionalVenueInfo;
 
-    // What the member needs to know about tickets
-    private int maxTicketsPerMember;
-    private int freeTicketsPerMember;
-    private BigDecimal memberTicketPrice;         // "Entry is FREE for members"
-
-    // Guest info
-    private boolean guestsAllowed;
-    private Integer maxGuestsPerMember;           // "up to 2 guests"
-    private BigDecimal guestTicketPrice;          // "₹1000/- per person"
+    // Ticket info — same price for everyone in the booking
+    private int maxTicketsPerMember;              // Total tickets a member can book (themselves + anyone with them)
+    private int freeTicketsPerRegistration;       // How many of those are free
+    private BigDecimal ticketPrice;               // Price per paid ticket (0.00 for free events)
 
     // Rules
     private Integer minimumAge;                   // "Minimum Age: 18+"
