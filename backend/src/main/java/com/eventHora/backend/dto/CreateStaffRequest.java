@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
-import Enum.Role;
+import com.eventHora.backend.Enum.Role;
 
 @Data
 public class CreateStaffRequest {

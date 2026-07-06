@@ -1,7 +1,7 @@
 package com.eventHora.backend.config;
 
 
-import Enum.Role;
+import com.eventHora.backend.Enum.Role;
 import com.eventHora.backend.model.SystemUser;
 import com.eventHora.backend.repository.SystemUserRepository;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +11,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import Enum.Role;
 
 /**
  * Seeds the database with initial system users on first startup.

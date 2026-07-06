@@ -5,17 +5,21 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.web.filter.CorsFilter;
 
 import java.util.List;
 
 /**
  * CORS configuration — allows the React / Next.js frontend to call the backend.
  *
+ * Exposes a CorsConfigurationSource bean so Spring Security's filter chain
+ * can apply it via .cors(Customizer.withDefaults()) in SecurityConfig.
+ * This ensures CORS headers are set before Spring Security processes the
+ * request, meaning OPTIONS preflight requests are handled correctly.
+ *
  * Allowed origins:
  *   http://localhost:5173   → Vite (React dev server)
- *   http://localhost:3000   → Next.js dev server / CRA
  *   http://localhost:4173   → Vite preview build
+ *   http://localhost:3000   → Next.js / CRA
  */
 @Configuration
 public class CorsConfig {
@@ -39,25 +43,25 @@ public class CorsConfig {
     );
 
     @Bean
-    public CorsFilter corsFilter() {
+    public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
 
         config.setAllowedOrigins(ALLOWED_ORIGINS);
         config.setAllowedMethods(ALLOWED_METHODS);
         config.setAllowedHeaders(ALLOWED_HEADERS);
 
-        // Allow Authorization header to be read by the frontend
+        // Allow the frontend to read the Authorization header from responses
         config.setExposedHeaders(List.of("Authorization"));
 
         // Allow cookies / credentials to be sent cross-origin
         config.setAllowCredentials(true);
 
-        // Cache preflight (OPTIONS) response for 1 hour
+        // Cache preflight (OPTIONS) response for 1 hour — avoids a preflight on every request
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/api/**", config);   // applies to all API routes
+        source.registerCorsConfiguration("/api/**", config);
 
-        return new CorsFilter(source);
+        return source;
     }
 }
