@@ -20,14 +20,15 @@ import java.util.UUID;
 /**
  * Represents an RIC event (e.g. Musical Evening, Kathak Dance).
  *
- * Key design decisions from real event notices:
- *  - Events can have separate member and guest pricing
- *    (e.g. member FREE, guest ₹1000/person up to 2 guests)
- *  - Registration has a hard deadline (registrationDeadline)
- *  - Some events require members to have paid their annual fee
- *  - importantNotes stores the free-form bullet points
- *    admins write in event communications
- *  - Show and dinner can be at different venues (venue + additionalVenueInfo)
+ * Pricing model (simplified):
+ *  - One unified ticketPrice applies to every ticket (member + any accompanying person).
+ *  - freeTicketsPerRegistration defines how many of those are free per booking.
+ *  - maxTicketsPerMember is the total a member can book in a single registration
+ *    (covering both themselves and anyone they bring along).
+ *  - Registration has a hard deadline (registrationDeadline).
+ *  - Some events require members to have paid their annual fee.
+ *  - importantNotes stores the free-form bullet points admins write in event communications.
+ *  - Show and dinner can be at different venues (venue + additionalVenueInfo).
  */
 @Entity
 @Table(name = "events")
@@ -53,8 +54,8 @@ public class Event {
     @Column(nullable = false)
     private EventCategory category;               // MUSIC, DANCE, CULTURAL, etc.
 
-    @Column(nullable = false)
-    private String bannerUrl;                     // S3 URL of event banner/poster image
+    @Column
+    private String bannerUrl;                     // S3 URL of event banner/poster image (set via /banner upload)
 
     // ─── Schedule ─────────────────────────────────────────────────────────────
 
@@ -85,24 +86,15 @@ public class Event {
     private int totalCapacity;                    // Total seats available for the event
 
     @Column(nullable = false)
-    private int maxTicketsPerMember;              // Max total tickets (member + guest) per registration
+    private int maxTicketsPerMember;              // Total tickets per registration (member + anyone they bring)
 
     @Column(nullable = false)
-    private int freeTicketsPerMember;             // How many member tickets are free (usually all)
+    private int freeTicketsPerRegistration;       // How many of those maxTicketsPerMember are free
+                                                  // e.g. 2 free out of 4 total → pay for 2
 
     @Column(nullable = false, precision = 10, scale = 2)
-    private BigDecimal memberTicketPrice;         // Member ticket price (0.00 if free)
-
-    // ─── Guest Tickets ────────────────────────────────────────────────────────
-
-    @Column(nullable = false)
-    private boolean guestsAllowed;               // Whether members can bring guests
-
-    @Column
-    private Integer maxGuestsPerMember;          // Max guests a member can bring (e.g. 2)
-
-    @Column(precision = 10, scale = 2)
-    private BigDecimal guestTicketPrice;         // Price per guest ticket (e.g. ₹1000.00)
+    private BigDecimal ticketPrice;               // Unified price per paid ticket (same for everyone)
+                                                  // 0.00 for fully free events
 
     // ─── Platform Fee ─────────────────────────────────────────────────────────
 
@@ -136,10 +128,10 @@ public class Event {
 
     // ─── Status & Link ────────────────────────────────────────────────────────
 
-    @Enumerated(EnumType.STRING)
+    @Enumerated(EnumType.STRING) // so that it is stored as a string DRAFT rather than 0 in database
     @Column(nullable = false)
-    @Builder.Default
-    private EventStatus status = EventStatus.DRAFT;
+    @Builder.Default // if not provided, it will be DRAFT by default
+    private EventStatus status = EventStatus.DRAFT; 
 
     @Column(unique = true)
     private String uniqueEventLink;              // UUID slug: eventric.org/e/mere-mehboob-na-ja

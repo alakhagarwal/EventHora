@@ -2,7 +2,6 @@ package com.eventHora.backend.dto;
 
 import com.eventHora.backend.Enum.EventCategory;
 import com.eventHora.backend.Enum.EventStatus;
-import com.eventHora.backend.Enum.SeatingType;
 import lombok.Builder;
 import lombok.Data;
 
@@ -41,14 +40,9 @@ public class EventResponse {
     private int totalCapacity;
     private int bookedCount;                     // How many seats are already taken
     private int availableCount;                  // totalCapacity - bookedCount
-    private int maxTicketsPerMember;
-    private int freeTicketsPerMember;
-    private BigDecimal memberTicketPrice;
-
-    // Guests
-    private boolean guestsAllowed;
-    private Integer maxGuestsPerMember;
-    private BigDecimal guestTicketPrice;
+    private int maxTicketsPerMember;             // Total tickets per registration (member + anyone they bring)
+    private int freeTicketsPerRegistration;       // How many of those are free
+    private BigDecimal ticketPrice;               // Unified price per paid ticket (0.00 for free events)
 
     // Admin-only fields
     private BigDecimal platformFeePerTicket;

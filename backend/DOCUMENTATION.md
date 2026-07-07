@@ -364,3 +364,269 @@ src/main/java/com/eventHora/backend/
    → STAFF is blocked from ADMIN-only routes (403)
 ```
 
+---
+
+## Event Management API
+
+> **Access:** All event management endpoints require ADMIN role.
+> Add `Authorization: Bearer <admin-token>` to every request.
+
+### Event Status Lifecycle
+
+```
+DRAFT → PUBLISHED → COMPLETED
+           ↓
+       CANCELLED
+```
+
+- Events start as **DRAFT** and are invisible to members.
+- ADMIN explicitly calls `/publish` to make them live.
+- **CANCELLED** and **COMPLETED** are terminal states.
+
+---
+
+### 1. Create Event
+
+```
+POST /api/events
+```
+
+**Request Body** (`application/json`):
+```json
+{
+  "title": "Mere Mehboob Na Ja…",
+  "description": "A musical tribute to Suman Kalyanpur...",
+  "category": "MUSIC",
+  "eventDate": "2026-07-08",
+  "startTime": "18:30:00",
+  "endTime": "20:00:00",
+  "registrationDeadline": "2026-07-07T15:00:00",
+  "venue": "Main Audi, RIC",
+  "additionalVenueInfo": "Convention Hall with Lawn",
+  "totalCapacity": 500,
+  "maxTicketsPerMember": 4,
+  "freeTicketsPerRegistration": 2,
+  "ticketPrice": 1000.00,
+  "platformFeePerTicket": 0.00,
+  "minimumAge": 18,
+  "importantNotes": [
+    "Please carry your membership card",
+    "Blocking seats for later arrivals is not permitted"
+  ],
+  "contactPersonName": "Mr. Keyur Patel, Marketing Manager",
+  "contactPersonPhone": "9462200225"
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `title` | String | ✅ | Event name |
+| `description` | String | ✅ | Full invite text |
+| `category` | Enum | ✅ | `MUSIC`, `DANCE`, `CULTURAL`, `EDUCATIONAL`, `SOCIAL`, `SPORTS`, `OTHER` |
+| `eventDate` | Date `YYYY-MM-DD` | ✅ | Must be today or future |
+| `startTime` | Time `HH:mm:ss` | ✅ | |
+| `endTime` | Time `HH:mm:ss` | ✅ | |
+| `registrationDeadline` | DateTime | ✅ | Must be in the future |
+| `venue` | String | ✅ | Primary venue |
+| `additionalVenueInfo` | String | ❌ | Secondary venue (e.g., for gala dinner) |
+| `totalCapacity` | Integer | ✅ | Min 1 |
+| `maxTicketsPerMember` | Integer | ✅ | Total tickets per registration (member + anyone they bring) |
+| `freeTicketsPerRegistration` | Integer | ✅ | How many of those are free |
+| `ticketPrice` | Decimal | ✅ | Unified price per paid ticket. `0.00` for fully free events |
+| `platformFeePerTicket` | Decimal | ✅ | EventHora fee per paid ticket |
+| `minimumAge` | Integer | ❌ | `null` = no restriction |
+| `importantNotes` | Array of strings | ❌ | Bullet points shown on event page |
+| `contactPersonName` | String | ❌ | |
+| `contactPersonPhone` | String | ❌ | |
+
+**Success Response `201 Created`:**
+```json
+{
+  "id": "uuid-of-event",
+  "title": "Mere Mehboob Na Ja…",
+  "status": "DRAFT",
+  "uniqueEventLink": "mere-mehboob-na-ja-3f8a2b",
+  "createdByName": "EventHora Admin",
+  ...
+}
+```
+
+---
+
+### 2. Update Event
+
+Partially updates an event. Only fields present in the body are changed. Omit any field you don't want to change.
+
+```
+PATCH /api/events/{id}
+```
+
+**Example — update only venue and capacity:**
+```json
+{
+  "venue": "Mini Audi-1, RIC",
+  "totalCapacity": 300
+}
+```
+
+**Success Response `200 OK`:** Full `EventResponse` with all updated fields.
+
+---
+
+### 3. Publish Event
+
+Transitions a `DRAFT` event to `PUBLISHED`, making it visible to members for registration.
+
+```
+PATCH /api/events/{id}/publish
+```
+
+No request body needed.
+
+**Success Response `200 OK`:** Full `EventResponse` with `"status": "PUBLISHED"`.
+
+**Error `409 Conflict`:** If the event is already `CANCELLED`.
+
+---
+
+### 4. Cancel Event
+
+Marks an event as `CANCELLED`. This is a soft operation — the event remains in the database.
+
+```
+DELETE /api/events/{id}
+```
+
+No request body needed.
+
+**Success Response `200 OK`:**
+```json
+{
+  "message": "Event cancelled successfully"
+}
+```
+
+**Error `409 Conflict`:** If the event is already `COMPLETED`.
+
+---
+
+### 5. List All Events (Admin Dashboard)
+
+Returns a summary list of all events in the system, ordered by event date (newest first). Includes events of all statuses.
+
+```
+GET /api/admin/events
+```
+
+**Success Response `200 OK`:**
+```json
+[
+  {
+    "id": "uuid",
+    "title": "Mere Mehboob Na Ja…",
+    "category": "MUSIC",
+    "bannerUrl": "https://bucket.s3.region.amazonaws.com/events/banners/uuid.jpg",
+    "eventDate": "2026-07-08",
+    "startTime": "18:30:00",
+    "venue": "Main Audi, RIC",
+    "status": "PUBLISHED",
+    "uniqueEventLink": "mere-mehboob-na-ja-3f8a2b",
+    "totalCapacity": 500,
+    "bookedCount": 120,
+    "availableCount": 380,
+    "registrationOpen": true,
+    "isSoldOut": false
+  }
+]
+```
+
+---
+
+### 6. Upload Event Banner
+
+Uploads a banner/poster image for an event to AWS S3. The S3 URL is automatically saved to the event. If a banner already exists, it is deleted from S3 before uploading the new one.
+
+```
+POST /api/events/{id}/banner
+Content-Type: multipart/form-data
+```
+
+| Form field | Type | Required | Notes |
+|---|---|---|---|
+| `file` | File | ✅ | Image file (JPG, PNG, WebP recommended) |
+
+**Success Response `200 OK`:** Full `EventResponse` with the updated `bannerUrl` field.
+
+**How the URL is formed:**
+```
+https://{bucket-name}.s3.{region}.amazonaws.com/events/banners/{uuid}.jpg
+```
+
+This URL is saved to `Event.bannerUrl` and is what the frontend uses to display the banner.
+
+---
+
+### 7. List Public Events (Member Landing Page)
+
+Returns a summary list of all `PUBLISHED` events, ordered by event date (newest first). 
+
+```
+GET /api/events
+```
+> **Access:** PUBLIC (No token required)
+
+**Success Response `200 OK`:**
+Returns an array of `EventSummaryResponse` objects. Each object includes:
+- `registrationOpen` (boolean): `true` if the event is published, the deadline has not passed, and it is not sold out.
+- `isSoldOut` (boolean): `true` if `bookedCount >= totalCapacity`.
+
+---
+
+### 8. Get Public Event Details
+
+Returns the full details of a single `PUBLISHED` event by its unique link. Used for the event details page where a member begins the booking process.
+
+```
+GET /api/events/{link}
+```
+> **Access:** PUBLIC (No token required)
+
+**Success Response `200 OK`:**
+Returns a `PublicEventResponse` object containing the event details, ticket limits, rules, and notes.
+Also includes `registrationOpen` and `isSoldOut` booleans to easily determine the booking status.
+
+**Error `404 Not Found`:**
+If the slug doesn't exist or the event is in `DRAFT`/`CANCELLED` status.
+
+---
+
+## File Structure (Event Module)
+
+```
+src/main/java/com/eventHora/backend/
+│
+├── Enum/
+│   ├── EventStatus.java        # DRAFT, PUBLISHED, CANCELLED, COMPLETED
+│   ├── EventCategory.java      # MUSIC, DANCE, CULTURAL, etc.
+│   └── SeatingType.java        # FIRST_COME_FIRST_SERVED, ASSIGNED_SEATING
+│
+├── model/
+│   └── Event.java              # JPA Entity → events table + event_notes table
+│
+├── repository/
+│   └── EventRepository.java    # findAllByDate, findByStatus, findBySlug
+│
+├── service/
+│   ├── EventService.java       # Business logic for all 6 endpoints
+│   └── S3Service.java          # File upload / delete / presigned URL
+│
+├── controller/
+│   └── EventController.java    # REST endpoints
+│
+└── dto/
+    ├── CreateEventRequest.java      # POST body
+    ├── UpdateEventRequest.java      # PATCH body (all optional)
+    ├── EventResponse.java           # Full response for admin/staff
+    ├── PublicEventResponse.java     # Stripped response for members
+    └── EventSummaryResponse.java    # Minimal card for list views
+```

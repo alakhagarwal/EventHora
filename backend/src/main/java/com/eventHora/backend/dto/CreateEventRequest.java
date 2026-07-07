@@ -1,7 +1,6 @@
 package com.eventHora.backend.dto;
 
 import com.eventHora.backend.Enum.EventCategory;
-import com.eventHora.backend.Enum.SeatingType;
 import jakarta.validation.constraints.*;
 import lombok.Data;
 
@@ -63,26 +62,15 @@ public class CreateEventRequest {
 
     @NotNull(message = "Max tickets per member is required")
     @Min(value = 1, message = "Max tickets per member must be at least 1")
-    private Integer maxTicketsPerMember;
+    private Integer maxTicketsPerMember;          // Total tickets a member can book (themselves + anyone with them)
 
-    @NotNull(message = "Free tickets per member is required")
+    @NotNull(message = "Free tickets per registration is required")
     @Min(value = 0, message = "Free tickets cannot be negative")
-    private Integer freeTicketsPerMember;
+    private Integer freeTicketsPerRegistration;   // How many of maxTicketsPerMember are free
 
-    @NotNull(message = "Member ticket price is required")
-    @DecimalMin(value = "0.0", message = "Member ticket price cannot be negative")
-    private BigDecimal memberTicketPrice;        // 0.00 for free events
-
-    // ─── Guest Tickets ────────────────────────────────────────────────────────
-
-    @NotNull(message = "Specify whether guests are allowed")
-    private Boolean guestsAllowed;
-
-    @Min(value = 0, message = "Max guests cannot be negative")
-    private Integer maxGuestsPerMember;          // Required if guestsAllowed = true
-
-    @DecimalMin(value = "0.0", message = "Guest ticket price cannot be negative")
-    private BigDecimal guestTicketPrice;         // Required if guestsAllowed = true
+    @NotNull(message = "Ticket price is required")
+    @DecimalMin(value = "0.0", message = "Ticket price cannot be negative")
+    private BigDecimal ticketPrice;               // Unified price per paid ticket (0.00 for fully free events)
 
     // ─── Platform Fee ─────────────────────────────────────────────────────────
 
@@ -94,7 +82,6 @@ public class CreateEventRequest {
 
     @Min(value = 0, message = "Minimum age cannot be negative")
     private Integer minimumAge;                  // null = no age restriction
-
 
     // ─── Important Notes ──────────────────────────────────────────────────────
 

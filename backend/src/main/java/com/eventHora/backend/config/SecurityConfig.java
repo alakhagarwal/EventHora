@@ -19,6 +19,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.http.HttpMethod;
 
 import com.eventHora.backend.repository.SystemUserRepository;
 import com.eventHora.backend.security.JwtAuthFilter;
@@ -37,8 +38,7 @@ public class SecurityConfig {
             "/api/auth/login",
             "/api/member/verify",
             "/api/otp/send",
-            "/api/otp/verify",
-            "/api/events/{link}"         // public event page
+            "/api/otp/verify"
     };
 
     @Bean
@@ -50,6 +50,7 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_URLS).permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/events", "/api/events/*").permitAll() // Public event fetch
                         .anyRequest().authenticated()           // everything else needs a valid JWT
                 )
                 .authenticationProvider(authenticationProvider())
