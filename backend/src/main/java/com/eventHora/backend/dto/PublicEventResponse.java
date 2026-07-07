@@ -1,7 +1,6 @@
 package com.eventHora.backend.dto;
 
 import com.eventHora.backend.Enum.EventCategory;
-import com.eventHora.backend.Enum.SeatingType;
 import lombok.Builder;
 import lombok.Data;
 
@@ -61,4 +60,5 @@ public class PublicEventResponse {
     // Registration
     private String uniqueEventLink;
     private boolean registrationOpen;             // false when deadline has passed or event is full
+    private boolean isSoldOut;                    // true when booked tickets >= total capacity
 }

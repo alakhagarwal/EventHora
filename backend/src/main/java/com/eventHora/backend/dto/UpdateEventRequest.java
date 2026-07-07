@@ -1,7 +1,6 @@
 package com.eventHora.backend.dto;
 
 import com.eventHora.backend.Enum.EventCategory;
-import com.eventHora.backend.Enum.SeatingType;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.FutureOrPresent;

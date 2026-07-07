@@ -54,8 +54,8 @@ public class Event {
     @Column(nullable = false)
     private EventCategory category;               // MUSIC, DANCE, CULTURAL, etc.
 
-    @Column(nullable = false)
-    private String bannerUrl;                     // S3 URL of event banner/poster image
+    @Column
+    private String bannerUrl;                     // S3 URL of event banner/poster image (set via /banner upload)
 
     // ─── Schedule ─────────────────────────────────────────────────────────────
 

@@ -2,7 +2,6 @@ package com.eventHora.backend.dto;
 
 import com.eventHora.backend.Enum.EventCategory;
 import com.eventHora.backend.Enum.EventStatus;
-import com.eventHora.backend.Enum.SeatingType;
 import lombok.Builder;
 import lombok.Data;
 

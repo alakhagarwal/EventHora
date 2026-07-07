@@ -33,4 +33,5 @@ public class EventSummaryResponse {
     private int bookedCount;
     private int availableCount;
     private boolean registrationOpen;         // false if deadline passed or event full
+    private boolean isSoldOut;                // true when booked tickets >= total capacity
 }

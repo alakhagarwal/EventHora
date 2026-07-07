@@ -1,7 +1,6 @@
 package com.eventHora.backend.dto;
 
 import com.eventHora.backend.Enum.EventCategory;
-import com.eventHora.backend.Enum.SeatingType;
 import jakarta.validation.constraints.*;
 import lombok.Data;
 
@@ -83,7 +82,6 @@ public class CreateEventRequest {
 
     @Min(value = 0, message = "Minimum age cannot be negative")
     private Integer minimumAge;                  // null = no age restriction
-
 
     // ─── Important Notes ──────────────────────────────────────────────────────
 
