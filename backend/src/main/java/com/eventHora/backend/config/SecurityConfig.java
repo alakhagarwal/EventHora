@@ -36,9 +36,7 @@ public class SecurityConfig {
     /** Public routes — no JWT required */
     private static final String[] PUBLIC_URLS = {
             "/api/auth/login",
-            "/api/member/verify",
-            "/api/otp/send",
-            "/api/otp/verify"
+            "/api/registration/**"
     };
 
     @Bean
