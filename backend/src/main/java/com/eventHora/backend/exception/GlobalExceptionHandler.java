@@ -99,6 +99,26 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of(403, "Forbidden", "You do not have permission to perform this action"));
     }
 
+    /**
+     * 400 – bad business logic arguments (e.g. invalid member ID in mock).
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of(400, "Bad Request", ex.getMessage()));
+    }
+
+    /**
+     * 400 – malformed JSON request (e.g. invalid enum string like "INVALID_TYPE").
+     */
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleHttpMessageNotReadable(org.springframework.http.converter.HttpMessageNotReadableException ex) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of(400, "Bad Request", "Malformed JSON request. Please check your field types and values."));
+    }
+
     // ─── 4. Catch-all fallback ─────────────────────────────────────────────────
 
     /**

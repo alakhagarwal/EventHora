@@ -600,6 +600,45 @@ If the slug doesn't exist or the event is in `DRAFT`/`CANCELLED` status.
 
 ---
 
+## Member Registration API
+
+> **Access:** These endpoints are PUBLIC but are used exclusively for member ticketing.
+
+### 1. Verify Member (Soft Login)
+
+Validates the member's details via the external RIC API and establishes a secure Redis session. This must be called before initiating a booking.
+
+```
+POST /api/registration/verify-member
+```
+
+**Request Body** (`application/json`):
+```json
+{
+  "memberId": "RIC-12345",
+  "identifier": "9876543210",
+  "memberType": "INDIAN"
+}
+```
+- `memberType` can be `INDIAN` (identifier = mobile) or `OVERSEAS` (identifier = email).
+
+**Success Response `200 OK`:**
+```json
+{
+  "sessionToken": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+  "memberId": "RIC-12345",
+  "memberType": "INDIAN",
+  "maskedIdentifier": "98****10"
+}
+```
+- The frontend **must** save the `sessionToken` and send it in the next step (booking).
+- `maskedIdentifier` can be shown to the user (e.g. "OTP will be sent to 98****10").
+
+**Error `400 Bad Request`:**
+If the member ID or identifier is invalid/does not match RIC records.
+
+---
+
 ## File Structure (Event Module)
 
 ```
