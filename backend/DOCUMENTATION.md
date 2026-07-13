@@ -542,7 +542,55 @@ GET /api/admin/events
 
 ---
 
-### 6. Upload Event Banner
+### 6. Get Single Event (Admin Detail View)
+
+Returns the **full details** of a single event regardless of its status (DRAFT, PUBLISHED, CANCELLED). Use this before making a `PATCH` update call so you can see the current values of every field.
+
+```
+GET /api/admin/events/{id}
+```
+
+No request body needed.
+
+**Success Response `200 OK`:** Full `EventResponse` with all fields:
+```json
+{
+  "id": "uuid-of-event",
+  "title": "Mere Mehboob Na Ja…",
+  "description": "A musical tribute...",
+  "category": "MUSIC",
+  "bannerUrl": "https://...",
+  "eventDate": "2026-07-08",
+  "startTime": "18:30:00",
+  "endTime": "20:00:00",
+  "registrationDeadline": "2026-07-07T15:00:00",
+  "venue": "Main Audi, RIC",
+  "additionalVenueInfo": "Convention Hall with Lawn",
+  "totalCapacity": 500,
+  "bookedCount": 120,
+  "availableCount": 380,
+  "maxTicketsPerMember": 4,
+  "freeTicketsPerRegistration": 2,
+  "ticketPrice": 1000.00,
+  "platformFeePerTicket": 0.00,
+  "minimumAge": 18,
+  "importantNotes": ["Please carry your membership card"],
+  "contactPersonName": "Mr. Keyur Patel",
+  "contactPersonPhone": "9462200225",
+  "status": "PUBLISHED",
+  "uniqueEventLink": "mere-mehboob-na-ja-3f8a2b",
+  "createdByName": "EventHora Admin",
+  "createdAt": "2026-07-01T10:00:00",
+  "updatedAt": "2026-07-05T14:30:00"
+}
+```
+
+**Error `404 Not Found`:** If no event exists with that ID.
+
+---
+
+### 7. Upload Event Banner
+
 
 Uploads a banner/poster image for an event to AWS S3. The S3 URL is automatically saved to the event. If a banner already exists, it is deleted from S3 before uploading the new one.
 
@@ -639,33 +687,41 @@ If the member ID or identifier is invalid/does not match RIC records.
 
 ---
 
-## File Structure (Event Module)
+### 2. Initiate Booking
+
+Validates booking rules (capacity, deadlines, quotas), generates a 6-digit OTP, and locks the booking intent in Redis for 10 minutes. 
+*Note: OTP delivery is mocked to the console log for testing.*
 
 ```
-src/main/java/com/eventHora/backend/
-│
-├── Enum/
-│   ├── EventStatus.java        # DRAFT, PUBLISHED, CANCELLED, COMPLETED
-│   ├── EventCategory.java      # MUSIC, DANCE, CULTURAL, etc.
-│   └── SeatingType.java        # FIRST_COME_FIRST_SERVED, ASSIGNED_SEATING
-│
-├── model/
-│   └── Event.java              # JPA Entity → events table + event_notes table
-│
-├── repository/
-│   └── EventRepository.java    # findAllByDate, findByStatus, findBySlug
-│
-├── service/
-│   ├── EventService.java       # Business logic for all 6 endpoints
-│   └── S3Service.java          # File upload / delete / presigned URL
-│
-├── controller/
-│   └── EventController.java    # REST endpoints
-│
-└── dto/
-    ├── CreateEventRequest.java      # POST body
-    ├── UpdateEventRequest.java      # PATCH body (all optional)
-    ├── EventResponse.java           # Full response for admin/staff
-    ├── PublicEventResponse.java     # Stripped response for members
-    └── EventSummaryResponse.java    # Minimal card for list views
+POST /api/registration/initiate
 ```
+
+**Request Body** (`application/json`):
+```json
+{
+  "sessionToken": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+  "eventId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "quantity": 3,
+  "paymentPreference": "ONLINE"
+}
+```
+- `paymentPreference` must be either `ONLINE` or `AT_GATE`.
+- `quantity` must be between 1 and the event's `maxTicketsPerMember`.
+
+**Success Response `200 OK`:**
+```json
+{
+  "message": "OTP sent to 98****10",
+  "expiresInSeconds": 300
+}
+```
+- The frontend should start a 5-minute (300s) countdown timer and show the OTP input popup.
+
+**Error Responses:**
+- `401 Unauthorized`: If the `sessionToken` is invalid or expired.
+- `404 Not Found`: If the `eventId` does not exist.
+- `400 Bad Request`: If capacity is exceeded, deadline passed, event is not PUBLISHED, or quantity exceeds allowed limit.
+- `409 Conflict`: If the member has already registered for this event.
+
+---
+

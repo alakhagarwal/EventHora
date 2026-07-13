@@ -56,6 +56,26 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of(401, "Unauthorized", ex.getMessage()));
     }
 
+    /**
+     * 401 – Redis session expired or not found (member must re-verify).
+     */
+    @ExceptionHandler(org.springframework.security.authentication.BadCredentialsException.class)
+    public ResponseEntity<ErrorResponse> handleBadCredentials(org.springframework.security.authentication.BadCredentialsException ex) {
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of(401, "Unauthorized", ex.getMessage()));
+    }
+
+    /**
+     * 409 – duplicate booking (member already registered for this event).
+     */
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalState(IllegalStateException ex) {
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of(409, "Conflict", ex.getMessage()));
+    }
+
     // ─── 2. Bean Validation (@Valid) failures ──────────────────────────────────
 
     /**
