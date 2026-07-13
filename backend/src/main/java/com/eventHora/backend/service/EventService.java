@@ -130,7 +130,15 @@ public class EventService {
                 .toList();
     }
 
-    // ─── Get single event (public) ────────────────────────────────────────────
+    // ─── Get single event (admin) ─────────────────────────────────────────────
+
+    /**
+     * Returns the full EventResponse for any event regardless of status.
+     * Used by the admin dashboard before making a PATCH call.
+     */
+    public EventResponse getEventById(UUID id) {
+        return toEventResponse(findEventById(id));
+    }
 
     public PublicEventResponse getPublicEventBySlug(String uniqueEventLink) {
         Event event = eventRepository.findByUniqueEventLink(uniqueEventLink)

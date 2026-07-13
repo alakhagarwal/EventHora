@@ -88,6 +88,18 @@ public class EventController {
     }
 
     /**
+     * GET /api/admin/events/{id}
+     * Returns the full details of a single event regardless of its status.
+     * Use this before making a PATCH update call so you know the current values.
+     * Access: ADMIN only
+     */
+    @GetMapping("/api/admin/events/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<EventResponse> getEventById(@PathVariable UUID id) {
+        return ResponseEntity.ok(eventService.getEventById(id));
+    }
+
+    /**
      * POST /api/events/{id}/banner
      * Uploads a banner image for an event to S3.
      * The returned S3 URL is saved to the event's bannerUrl field.

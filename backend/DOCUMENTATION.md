@@ -542,7 +542,55 @@ GET /api/admin/events
 
 ---
 
-### 6. Upload Event Banner
+### 6. Get Single Event (Admin Detail View)
+
+Returns the **full details** of a single event regardless of its status (DRAFT, PUBLISHED, CANCELLED). Use this before making a `PATCH` update call so you can see the current values of every field.
+
+```
+GET /api/admin/events/{id}
+```
+
+No request body needed.
+
+**Success Response `200 OK`:** Full `EventResponse` with all fields:
+```json
+{
+  "id": "uuid-of-event",
+  "title": "Mere Mehboob Na Ja…",
+  "description": "A musical tribute...",
+  "category": "MUSIC",
+  "bannerUrl": "https://...",
+  "eventDate": "2026-07-08",
+  "startTime": "18:30:00",
+  "endTime": "20:00:00",
+  "registrationDeadline": "2026-07-07T15:00:00",
+  "venue": "Main Audi, RIC",
+  "additionalVenueInfo": "Convention Hall with Lawn",
+  "totalCapacity": 500,
+  "bookedCount": 120,
+  "availableCount": 380,
+  "maxTicketsPerMember": 4,
+  "freeTicketsPerRegistration": 2,
+  "ticketPrice": 1000.00,
+  "platformFeePerTicket": 0.00,
+  "minimumAge": 18,
+  "importantNotes": ["Please carry your membership card"],
+  "contactPersonName": "Mr. Keyur Patel",
+  "contactPersonPhone": "9462200225",
+  "status": "PUBLISHED",
+  "uniqueEventLink": "mere-mehboob-na-ja-3f8a2b",
+  "createdByName": "EventHora Admin",
+  "createdAt": "2026-07-01T10:00:00",
+  "updatedAt": "2026-07-05T14:30:00"
+}
+```
+
+**Error `404 Not Found`:** If no event exists with that ID.
+
+---
+
+### 7. Upload Event Banner
+
 
 Uploads a banner/poster image for an event to AWS S3. The S3 URL is automatically saved to the event. If a banner already exists, it is deleted from S3 before uploading the new one.
 
