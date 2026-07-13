@@ -639,33 +639,41 @@ If the member ID or identifier is invalid/does not match RIC records.
 
 ---
 
-## File Structure (Event Module)
+### 2. Initiate Booking
+
+Validates booking rules (capacity, deadlines, quotas), generates a 6-digit OTP, and locks the booking intent in Redis for 10 minutes. 
+*Note: OTP delivery is mocked to the console log for testing.*
 
 ```
-src/main/java/com/eventHora/backend/
-│
-├── Enum/
-│   ├── EventStatus.java        # DRAFT, PUBLISHED, CANCELLED, COMPLETED
-│   ├── EventCategory.java      # MUSIC, DANCE, CULTURAL, etc.
-│   └── SeatingType.java        # FIRST_COME_FIRST_SERVED, ASSIGNED_SEATING
-│
-├── model/
-│   └── Event.java              # JPA Entity → events table + event_notes table
-│
-├── repository/
-│   └── EventRepository.java    # findAllByDate, findByStatus, findBySlug
-│
-├── service/
-│   ├── EventService.java       # Business logic for all 6 endpoints
-│   └── S3Service.java          # File upload / delete / presigned URL
-│
-├── controller/
-│   └── EventController.java    # REST endpoints
-│
-└── dto/
-    ├── CreateEventRequest.java      # POST body
-    ├── UpdateEventRequest.java      # PATCH body (all optional)
-    ├── EventResponse.java           # Full response for admin/staff
-    ├── PublicEventResponse.java     # Stripped response for members
-    └── EventSummaryResponse.java    # Minimal card for list views
+POST /api/registration/initiate
 ```
+
+**Request Body** (`application/json`):
+```json
+{
+  "sessionToken": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+  "eventId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "quantity": 3,
+  "paymentPreference": "ONLINE"
+}
+```
+- `paymentPreference` must be either `ONLINE` or `AT_GATE`.
+- `quantity` must be between 1 and the event's `maxTicketsPerMember`.
+
+**Success Response `200 OK`:**
+```json
+{
+  "message": "OTP sent to 98****10",
+  "expiresInSeconds": 300
+}
+```
+- The frontend should start a 5-minute (300s) countdown timer and show the OTP input popup.
+
+**Error Responses:**
+- `401 Unauthorized`: If the `sessionToken` is invalid or expired.
+- `404 Not Found`: If the `eventId` does not exist.
+- `400 Bad Request`: If capacity is exceeded, deadline passed, event is not PUBLISHED, or quantity exceeds allowed limit.
+- `409 Conflict`: If the member has already registered for this event.
+
+---
+

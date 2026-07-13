@@ -1,5 +1,7 @@
 package com.eventHora.backend.controller;
 
+import com.eventHora.backend.dto.InitiateBookingRequest;
+import com.eventHora.backend.dto.InitiateBookingResponse;
 import com.eventHora.backend.dto.VerifyMemberRequest;
 import com.eventHora.backend.dto.VerifyMemberResponse;
 import com.eventHora.backend.service.RegistrationService;
@@ -30,4 +32,19 @@ public class RegistrationController {
     public ResponseEntity<VerifyMemberResponse> verifyMember(@Valid @RequestBody VerifyMemberRequest request) {
         return ResponseEntity.ok(registrationService.verifyMember(request));
     }
+
+    /**
+     * POST /api/registration/initiate
+     *
+     * Validates all booking rules (capacity, deadline, duplicates, per-member quota).
+     * Generates a 6-digit OTP, locks the BookingIntent in Redis, and "sends" the OTP
+     * (console-logged for now — swap in WhatsApp/Email provider when keys are ready).
+     *
+     * Access: PUBLIC (guarded internally by sessionToken)
+     */
+    @PostMapping("/initiate")
+    public ResponseEntity<InitiateBookingResponse> initiateBooking(@Valid @RequestBody InitiateBookingRequest request) {
+        return ResponseEntity.ok(registrationService.initiateBooking(request));
+    }
 }
+
