@@ -1,14 +1,24 @@
 "use client";
 import { useEffect, useState } from "react";
-import { eventsApi } from "@/src/lib/api";
-import EventCard from "@/src/components/EventCard";
-export default function AdminPublicEvents() {
-  const [ev,setEv]=useState<any[]>([]); const [err,setErr]=useState<string|null>(null);
-  useEffect(()=>{eventsApi.publicList().then(setEv).catch(e=>setErr(e.message));},[]);
-  return (<div><h1 className="mb-6 text-2xl font-semibold">Published Events (Public View)</h1>
-    {err && <p className="text-red-600">{err}</p>}
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {ev.map(e => <EventCard key={e.id} e={e} href={`/events/${e.uniqueEventLink}`} />)}
+import { useRouter } from "next/navigation";
+import { api } from "@/lib/api";
+import EventCard, { type EventSummary } from "@/components/EventCard";
+import { getSession } from "@/lib/auth";
+
+export default function AdminPublishedEvents() {
+  const [events, setEvents] = useState<EventSummary[]>([]);
+  const router = useRouter();
+  useEffect(() => {
+    const s = getSession(); if (!s || s.role !== "ADMIN") { router.push("/login"); return; }
+    api.publicEvents().then(setEvents).catch(() => {});
+  }, [router]);
+  return (
+    <div className="mx-auto max-w-7xl px-6 py-12">
+      <div className="eyebrow">Admin</div>
+      <h1 className="h1 mt-2 mb-8">Published Events (Read-only)</h1>
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {events.map((e) => <EventCard key={e.id} event={e} href={`/events/${e.uniqueEventLink}`} actionLabel="View Public Page" />)}
+      </div>
     </div>
-  </div>);
+  );
 }

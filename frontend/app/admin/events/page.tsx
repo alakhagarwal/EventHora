@@ -1,14 +1,39 @@
 "use client";
 import { useEffect, useState } from "react";
-import { eventsApi } from "@/src/lib/api";
-import EventCard from "@/src/components/EventCard";
-export default function AdminEvents() {
-  const [ev,setEv]=useState<any[]>([]); const [err,setErr]=useState<string|null>(null);
-  useEffect(()=>{eventsApi.adminList().then(setEv).catch(e=>setErr(e.message));},[]);
-  return (<div><h1 className="mb-6 text-2xl font-semibold">All Events</h1>
-    {err && <p className="text-red-600">{err}</p>}
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {ev.map(e => <EventCard key={e.id} e={e} href={`/admin/events/${e.id}`} />)}
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { api } from "@/lib/api";
+import EventCard, { type EventSummary } from "@/components/EventCard";
+import { getSession } from "@/lib/auth";
+
+export default function AllAdminEvents() {
+  const [events, setEvents] = useState<EventSummary[]>([]);
+  const [q, setQ] = useState("");
+  const router = useRouter();
+  useEffect(() => {
+    const s = getSession();
+    if (!s || s.role !== "ADMIN") { router.push("/login"); return; }
+    api.adminEvents().then(setEvents).catch(() => {});
+  }, [router]);
+
+  const filtered = events.filter((e) => !q || e.title?.toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <div className="mx-auto max-w-7xl px-6 py-12">
+      <div className="flex items-end justify-between mb-8 flex-wrap gap-4">
+        <div>
+          <div className="eyebrow">Admin</div>
+          <h1 className="h1 mt-2">All Events</h1>
+        </div>
+        <div className="flex gap-2">
+          <input className="input" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Link href="/admin/events/public" className="btn-outline">Published</Link>
+          <Link href="/admin/events/new" className="btn-primary">+ New</Link>
+        </div>
+      </div>
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {filtered.map((e) => <EventCard key={e.id} event={e} href={`/admin/events/${e.id}`} actionLabel="Edit" />)}
+      </div>
     </div>
-  </div>);
+  );
 }

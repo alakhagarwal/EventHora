@@ -1,12 +1,33 @@
 "use client";
 import { useEffect, useState } from "react";
-import { eventsApi } from "@/src/lib/api";
-import EventCard from "@/src/components/EventCard";
+import { api } from "@/lib/api";
+import EventCard, { type EventSummary } from "@/components/EventCard";
+
 export default function EventsPage() {
-  const [ev, setEv] = useState<any[]>([]); const [err,setErr]=useState<string|null>(null);
-  useEffect(()=>{eventsApi.publicList().then(setEv).catch(e=>setErr(e.message));},[]);
-  return (<div><h1 className="mb-6 text-2xl font-semibold">Published Events</h1>
-    {err && <p className="text-red-600">{err}</p>}
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{ev.map(e=><EventCard key={e.id} e={e} />)}</div>
-  </div>);
+  const [events, setEvents] = useState<EventSummary[]>([]);
+  const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { api.publicEvents().then((e) => setEvents(e || [])).catch(() => {}).finally(() => setLoading(false)); }, []);
+
+  const filtered = events.filter((e) =>
+    !q || e.title?.toLowerCase().includes(q.toLowerCase()) || e.venue?.toLowerCase().includes(q.toLowerCase())
+  );
+
+  return (
+    <div className="mx-auto max-w-7xl px-6 py-16">
+      <div className="mb-10 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+        <div>
+          <div className="eyebrow">Discover</div>
+          <h1 className="h1 mt-2">Upcoming Events</h1>
+        </div>
+        <input className="input md:w-96" placeholder="Search title or venue…" value={q} onChange={(e) => setQ(e.target.value)} />
+      </div>
+      {loading ? <div className="text-navy/60">Loading…</div> :
+        filtered.length === 0 ? <div className="card p-10 text-center text-navy/60">No events found.</div> :
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((e) => <EventCard key={e.id} event={e} href={`/events/${e.uniqueEventLink}`} actionLabel="Book Now" />)}
+        </div>}
+    </div>
+  );
 }

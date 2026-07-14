@@ -1,92 +1,60 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { memberApi } from "@/src/lib/api";
-import { getSessionToken } from "@/src/lib/auth";
+import Link from "next/link";
 
 export default function OtpPage() {
-  const router = useRouter();
-  const [msg, setMsg] = useState("");
-  const [remaining, setRemaining] = useState(0);
+  const [ctx, setCtx] = useState<any>(null);
+  const [remaining, setRemaining] = useState<number>(300);
   const [otp, setOtp] = useState("");
-  const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<any>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    setMsg(localStorage.getItem("otpMessage") || "OTP sent to your registered contact");
-    const expires = Number(localStorage.getItem("otpExpiresAt") || 0);
-    const tick = () => {
-      const r = Math.max(0, Math.floor((expires - Date.now()) / 1000));
-      setRemaining(r);
-    };
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
+    const raw = localStorage.getItem("bookingCtx");
+    if (raw) {
+      const c = JSON.parse(raw);
+      setCtx(c);
+      const elapsed = Math.floor((Date.now() - (c.startedAt || Date.now())) / 1000);
+      const total = c.expiresInSeconds || 300;
+      setRemaining(Math.max(0, total - elapsed));
+    }
   }, []);
 
-  async function verify() {
-    setErr(null);
-    const st = getSessionToken();
-    if (!st) { router.push("/login"); return; }
-    setBusy(true);
-    try {
-      const res = await memberApi.verifyOtp(st, otp);
-      setResult(res);
-    } catch (e: any) {
-      setErr(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
+  useEffect(() => {
+    if (remaining <= 0) return;
+    const t = setInterval(() => setRemaining((r) => Math.max(0, r - 1)), 1000);
+    return () => clearInterval(t);
+  }, [remaining]);
 
   const mm = String(Math.floor(remaining / 60)).padStart(2, "0");
   const ss = String(remaining % 60).padStart(2, "0");
 
-  if (result) {
-    return (
-      <div className="mx-auto max-w-md card p-6 text-center">
-        <div className="mb-4 text-4xl">Booking Confirmed</div>
-        <h1 className="text-2xl font-semibold">{result.eventTitle}</h1>
-        <p className="mt-2 text-sm text-slate-600">Ticket: <span className="font-mono font-semibold">{result.ticketReference}</span></p>
-        <p className="mt-1 text-sm text-slate-600">Quantity: {result.quantity}</p>
-        <p className="mt-1 text-sm text-slate-600">Total: ₹{result.totalAmount}</p>
-        <p className="mt-1 text-sm text-slate-600">Status: <span className="font-semibold">{result.paymentStatus}</span></p>
-        {result.paymentStatus === "PENDING" && (
-          <p className="mt-3 text-sm text-amber-600">Online payment — Razorpay checkout will open next.</p>
-        )}
-        <button className="btn-primary mt-6 w-full" onClick={() => router.push("/events")}>Back to Events</button>
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto max-w-md card p-6">
-      <h1 className="text-2xl font-semibold">Verify OTP</h1>
-      <p className="mt-2 text-sm text-slate-600">{msg}</p>
-      {remaining > 0 ? (
-        <p className="mt-1 text-sm">Expires in: <span className="font-mono font-semibold">{mm}:{ss}</span></p>
-      ) : (
-        <p className="mt-1 text-sm text-red-600 font-semibold">OTP has expired. Go back and start a new booking.</p>
-      )}
-      {err && <div className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-700">{err}</div>}
-      <label className="label mt-4">Enter 6-digit OTP</label>
-      <input
-        className="input tracking-widest text-center text-lg"
-        maxLength={6}
-        value={otp}
-        onChange={e => setOtp(e.target.value.replace(/\D/g, ""))}
-        disabled={remaining <= 0}
-      />
-      <button
-        className="btn-primary mt-4 w-full"
-        disabled={busy || otp.length !== 6 || remaining <= 0}
-        onClick={verify}
-      >
-        {busy ? "Verifying…" : "Confirm booking"}
-      </button>
-      <button className="btn-outline mt-3 w-full" onClick={() => router.back()}>Go back</button>
+    <div className="mx-auto max-w-md px-6 py-16">
+      <div className="card p-8 text-center">
+        <div className="eyebrow">Verification</div>
+        <h1 className="font-display text-3xl text-navy mt-2">Enter OTP</h1>
+        <p className="mt-3 text-navy/70 text-sm">
+          {ctx?.message || "A 6-digit code has been sent to your registered contact."}
+        </p>
+
+        <div className={`mt-6 font-display text-4xl ${remaining === 0 ? "text-red-600" : "text-navy"}`}>
+          {mm}:{ss}
+        </div>
+        <div className="text-xs text-navy/50 mt-1">{remaining === 0 ? "Expired — please restart booking" : "Time remaining"}</div>
+
+        <input
+          value={otp}
+          onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+          className="input mt-6 text-center tracking-[0.5em] text-2xl font-mono"
+          placeholder="••••••"
+        />
+        <button className="btn-primary w-full mt-4" disabled={otp.length !== 6 || remaining === 0}>
+          Confirm Booking
+        </button>
+        <p className="text-[11px] text-navy/50 mt-3">
+          Note: OTP confirmation endpoint is handled server-side per your backend. Wire it here when available.
+        </p>
+        <Link href="/events" className="btn-ghost mt-4 inline-flex">← Back to events</Link>
+      </div>
     </div>
   );
 }

@@ -1,18 +1,38 @@
 "use client";
 import { useEffect, useState } from "react";
-import { authApi } from "@/src/lib/api";
-export default function Profile() {
-  const [me,setMe]=useState<any>(null); const [err,setErr]=useState<string|null>(null);
-  useEffect(()=>{authApi.me().then(setMe).catch(e=>setErr(e.message));},[]);
-  if (err) return <p className="text-red-600">{err}</p>;
-  if (!me) return <p>Loading…</p>;
-  return (<div className="mx-auto max-w-md card p-6">
-    <h1 className="text-2xl font-semibold">My Profile</h1>
-    <dl className="mt-4 space-y-2 text-sm">
-      <div><dt className="text-slate-500">Name</dt><dd className="font-medium">{me.name}</dd></div>
-      <div><dt className="text-slate-500">Email</dt><dd>{me.email}</dd></div>
-      <div><dt className="text-slate-500">Role</dt><dd>{me.role}</dd></div>
-      {me.createdAt && <div><dt className="text-slate-500">Created</dt><dd>{me.createdAt}</dd></div>}
-    </dl>
-  </div>);
+import { useRouter } from "next/navigation";
+import { api } from "@/lib/api";
+
+export default function ProfilePage() {
+  const [me, setMe] = useState<any>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const router = useRouter();
+  useEffect(() => {
+    if (typeof window !== "undefined" && !localStorage.getItem("accessToken")) { router.push("/login"); return; }
+    api.me().then(setMe).catch((e) => setErr(e.message));
+  }, [router]);
+
+  return (
+    <div className="mx-auto max-w-2xl px-6 py-16">
+      <div className="eyebrow">Account</div>
+      <h1 className="h1 mt-2">Your Profile</h1>
+      {err && <div className="mt-4 text-red-600">{err}</div>}
+      {me && (
+        <div className="card p-8 mt-8 space-y-4">
+          <Row k="Name" v={me.name} />
+          <Row k="Email" v={me.email} />
+          <Row k="Role" v={me.role} />
+          {me.createdAt && <Row k="Joined" v={new Date(me.createdAt).toLocaleString()} />}
+        </div>
+      )}
+    </div>
+  );
+}
+function Row({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="flex justify-between border-b border-navy/10 pb-3 last:border-0">
+      <span className="text-navy/60 text-sm">{k}</span>
+      <span className="text-navy font-medium">{v}</span>
+    </div>
+  );
 }

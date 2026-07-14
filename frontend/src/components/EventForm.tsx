@@ -1,154 +1,177 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { eventsApi } from "@/src/lib/api";
+import { api } from "@/lib/api";
 
-const CATEGORIES = ["MUSIC","DANCE","CULTURAL","EDUCATIONAL","SOCIAL","SPORTS","OTHER"];
+export const EVENT_CATEGORIES = ["MUSIC", "DANCE", "CULTURAL", "EDUCATIONAL", "SOCIAL", "SPORTS", "OTHER"] as const;
 
-export interface EventFormProps { eventId?: string; }
+export type EventFormValues = {
+  title: string; description: string; category: string;
+  eventDate: string; startTime: string; endTime: string;
+  registrationDeadline: string;
+  venue: string; additionalVenueInfo: string;
+  totalCapacity: number; maxTicketsPerMember: number; freeTicketsPerRegistration: number;
+  ticketPrice: number; platformFeePerTicket: number;
+  minimumAge: number | null;
+  importantNotes: string[];
+  contactPersonName: string; contactPersonPhone: string;
+};
 
-export default function EventForm({ eventId }: EventFormProps) {
-  const router = useRouter();
-  const [loading, setLoading] = useState(!!eventId);
-  const [err, setErr] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [status, setStatus] = useState<string>("DRAFT");
-  const [banner, setBanner] = useState<File | null>(null);
-  const [form, setForm] = useState<any>({
-    title: "", description: "", category: "MUSIC",
-    eventDate: "", startTime: "", endTime: "", registrationDeadline: "",
-    venue: "", additionalVenueInfo: "",
-    totalCapacity: 100, maxTicketsPerMember: 4, freeTicketsPerRegistration: 0,
-    ticketPrice: 0, platformFeePerTicket: 0, minimumAge: "",
-    importantNotes: [""], contactPersonName: "", contactPersonPhone: "",
+const empty: EventFormValues = {
+  title: "", description: "", category: "MUSIC",
+  eventDate: "", startTime: "18:00:00", endTime: "20:00:00",
+  registrationDeadline: "",
+  venue: "", additionalVenueInfo: "",
+  totalCapacity: 100, maxTicketsPerMember: 4, freeTicketsPerRegistration: 0,
+  ticketPrice: 0, platformFeePerTicket: 0,
+  minimumAge: null,
+  importantNotes: [],
+  contactPersonName: "", contactPersonPhone: "",
+};
+
+export default function EventForm({
+  eventId,
+  initial,
+  onSaved,
+}: {
+  eventId?: string;
+  initial?: Partial<EventFormValues>;
+  onSaved?: (ev: any) => void;
+}) {
+  const [values, setValues] = useState<EventFormValues>({ ...empty, ...initial });
+  const [noteInput, setNoteInput] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [currentId, setCurrentId] = useState<string | undefined>(eventId);
+
+  useEffect(() => { if (initial) setValues((v) => ({ ...v, ...initial })); }, [initial]);
+
+  const set = <K extends keyof EventFormValues>(k: K, v: EventFormValues[K]) => setValues((s) => ({ ...s, [k]: v }));
+
+  const buildPayload = () => ({
+    ...values,
+    minimumAge: values.minimumAge === null || Number.isNaN(values.minimumAge) ? null : Number(values.minimumAge),
   });
 
-  useEffect(() => {
-    if (!eventId) return;
-    (async () => {
-      try {
-        const data = await eventsApi.adminDetail(eventId);
-        setForm({
-          title: data.title || "", description: data.description || "", category: data.category || "MUSIC",
-          eventDate: data.eventDate || "", startTime: data.startTime || "", endTime: data.endTime || "",
-          registrationDeadline: data.registrationDeadline || "", venue: data.venue || "",
-          additionalVenueInfo: data.additionalVenueInfo || "", totalCapacity: data.totalCapacity ?? 0,
-          maxTicketsPerMember: data.maxTicketsPerMember ?? 0, freeTicketsPerRegistration: data.freeTicketsPerRegistration ?? 0,
-          ticketPrice: data.ticketPrice ?? 0, platformFeePerTicket: data.platformFeePerTicket ?? 0,
-          minimumAge: data.minimumAge ?? "", importantNotes: data.importantNotes?.length ? data.importantNotes : [""],
-          contactPersonName: data.contactPersonName || "", contactPersonPhone: data.contactPersonPhone || "",
-        });
-        setStatus(data.status || "DRAFT");
-      } catch (e: any) { setErr(e.message); } finally { setLoading(false); }
-    })();
-  }, [eventId]);
+  const doAction = async (fn: () => Promise<any>, label: string) => {
+    setBusy(label); setMsg(null);
+    try { const r = await fn(); setMsg({ kind: "ok", text: `${label} successful.` }); onSaved?.(r); return r; }
+    catch (e: any) { setMsg({ kind: "err", text: e.message || "Action failed" }); }
+    finally { setBusy(null); }
+  };
 
-  function set(k: string, v: any) { setForm((f: any) => ({ ...f, [k]: v })); }
-  function setNote(i: number, v: string) { setForm((f: any) => { const n=[...f.importantNotes]; n[i]=v; return {...f, importantNotes:n}; }); }
+  const createDraft = () => doAction(async () => {
+    const r: any = await api.createEvent(buildPayload());
+    if (r?.id) setCurrentId(r.id);
+    return r;
+  }, "Create draft");
+  const saveDraft = () => currentId && doAction(() => api.updateEvent(currentId, buildPayload()), "Save");
+  const publish = () => currentId && doAction(() => api.publishEvent(currentId), "Publish");
+  const cancel = () => currentId && confirm("Cancel this event?") && doAction(() => api.cancelEvent(currentId), "Cancel");
 
-  function buildPayload() {
-    const p = { ...form };
-    p.importantNotes = (p.importantNotes || []).filter((n: string) => n.trim());
-    if (p.minimumAge === "" || p.minimumAge === null) delete p.minimumAge; else p.minimumAge = Number(p.minimumAge);
-    ["totalCapacity","maxTicketsPerMember","freeTicketsPerRegistration","ticketPrice","platformFeePerTicket"].forEach(k => p[k] = Number(p[k]));
-    return p;
-  }
-
-  async function createDraft() {
-    setErr(null); setMsg(null);
-    try {
-      const created = await eventsApi.create(buildPayload());
-      if (banner) await eventsApi.uploadBanner(created.id, banner);
-      router.push(`/admin/events/${created.id}`);
-    } catch (e: any) { setErr(e.message); }
-  }
-  async function saveDraft() {
-    if (!eventId) return createDraft();
-    setErr(null); setMsg(null);
-    try {
-      await eventsApi.update(eventId, buildPayload());
-      if (banner) await eventsApi.uploadBanner(eventId, banner);
-      setMsg("Saved");
-    } catch (e: any) { setErr(e.message); }
-  }
-  async function publish() {
-    if (!eventId) { setErr("Save draft first."); return; }
-    setErr(null); setMsg(null);
-    try { await eventsApi.update(eventId, buildPayload()); await eventsApi.publish(eventId); setStatus("PUBLISHED"); setMsg("Published"); }
-    catch (e: any) { setErr(e.message); }
-  }
-  async function cancel() {
-    if (!eventId) return;
-    if (!confirm("Cancel this event?")) return;
-    try { await eventsApi.cancel(eventId); setStatus("CANCELLED"); setMsg("Cancelled"); }
-    catch (e: any) { setErr(e.message); }
-  }
-
-  if (loading) return <p>Loading…</p>;
+  const uploadBanner = async (file: File) => {
+    if (!currentId) { setMsg({ kind: "err", text: "Create draft first, then upload banner." }); return; }
+    doAction(() => api.uploadBanner(currentId, file), "Banner upload");
+  };
 
   return (
-    <div className="space-y-6">
-      {err && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{err}</div>}
-      {msg && <div className="rounded-md bg-green-50 p-3 text-sm text-green-700">{msg}</div>}
-      {eventId && <p className="text-sm text-slate-500">Status: <span className="font-medium">{status}</span></p>}
+    <div className="space-y-8">
+      {msg && (
+        <div className={`rounded-md px-4 py-2 text-sm ${msg.kind === "ok" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-700"}`}>{msg.text}</div>
+      )}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div><label className="label">Title</label><input className="input" value={form.title} onChange={e=>set("title",e.target.value)} /></div>
-        <div><label className="label">Category</label>
-          <select className="input" value={form.category} onChange={e=>set("category",e.target.value)}>
-            {CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
-          </select>
+      <Section title="Basic details">
+        <Grid>
+          <Field label="Title"><input className="input" value={values.title} onChange={(e) => set("title", e.target.value)} /></Field>
+          <Field label="Category">
+            <select className="input" value={values.category} onChange={(e) => set("category", e.target.value)}>
+              {EVENT_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+            </select>
+          </Field>
+        </Grid>
+        <Field label="Description"><textarea rows={5} className="input" value={values.description} onChange={(e) => set("description", e.target.value)} /></Field>
+      </Section>
+
+      <Section title="Schedule">
+        <Grid cols={4}>
+          <Field label="Event Date"><input type="date" className="input" value={values.eventDate} onChange={(e) => set("eventDate", e.target.value)} /></Field>
+          <Field label="Start Time"><input type="time" step={1} className="input" value={values.startTime.slice(0,8)} onChange={(e) => set("startTime", (e.target.value.length === 5 ? e.target.value + ":00" : e.target.value))} /></Field>
+          <Field label="End Time"><input type="time" step={1} className="input" value={values.endTime.slice(0,8)} onChange={(e) => set("endTime", (e.target.value.length === 5 ? e.target.value + ":00" : e.target.value))} /></Field>
+          <Field label="Registration Deadline"><input type="datetime-local" className="input" value={values.registrationDeadline?.slice(0,16)} onChange={(e) => set("registrationDeadline", e.target.value.length === 16 ? e.target.value + ":00" : e.target.value)} /></Field>
+        </Grid>
+      </Section>
+
+      <Section title="Venue">
+        <Grid>
+          <Field label="Venue"><input className="input" value={values.venue} onChange={(e) => set("venue", e.target.value)} /></Field>
+          <Field label="Additional Venue Info"><input className="input" value={values.additionalVenueInfo} onChange={(e) => set("additionalVenueInfo", e.target.value)} /></Field>
+        </Grid>
+      </Section>
+
+      <Section title="Capacity & pricing">
+        <Grid cols={4}>
+          <Field label="Total Capacity"><input type="number" className="input" value={values.totalCapacity} onChange={(e) => set("totalCapacity", Number(e.target.value))} /></Field>
+          <Field label="Max Tickets / Member"><input type="number" className="input" value={values.maxTicketsPerMember} onChange={(e) => set("maxTicketsPerMember", Number(e.target.value))} /></Field>
+          <Field label="Free Tickets"><input type="number" className="input" value={values.freeTicketsPerRegistration} onChange={(e) => set("freeTicketsPerRegistration", Number(e.target.value))} /></Field>
+          <Field label="Minimum Age"><input type="number" className="input" value={values.minimumAge ?? ""} onChange={(e) => set("minimumAge", e.target.value === "" ? null : Number(e.target.value))} /></Field>
+          <Field label="Ticket Price"><input type="number" step="0.01" className="input" value={values.ticketPrice} onChange={(e) => set("ticketPrice", Number(e.target.value))} /></Field>
+          <Field label="Platform Fee / Ticket"><input type="number" step="0.01" className="input" value={values.platformFeePerTicket} onChange={(e) => set("platformFeePerTicket", Number(e.target.value))} /></Field>
+        </Grid>
+      </Section>
+
+      <Section title="Important notes">
+        <div className="flex gap-2">
+          <input className="input" placeholder="Add a note…" value={noteInput} onChange={(e) => setNoteInput(e.target.value)} />
+          <button type="button" className="btn-outline" onClick={() => { if (noteInput.trim()) { set("importantNotes", [...values.importantNotes, noteInput.trim()]); setNoteInput(""); } }}>Add</button>
         </div>
-      </div>
-      <div><label className="label">Description</label><textarea className="input min-h-[100px]" value={form.description} onChange={e=>set("description",e.target.value)} /></div>
+        <ul className="mt-3 space-y-1">
+          {values.importantNotes.map((n, i) => (
+            <li key={i} className="flex items-center justify-between rounded bg-navy/5 px-3 py-1 text-sm">
+              <span>• {n}</span>
+              <button className="text-xs text-red-600" onClick={() => set("importantNotes", values.importantNotes.filter((_, j) => j !== i))}>Remove</button>
+            </li>
+          ))}
+        </ul>
+      </Section>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <div><label className="label">Event Date</label><input type="date" className="input" value={form.eventDate} onChange={e=>set("eventDate",e.target.value)} /></div>
-        <div><label className="label">Start Time</label><input type="time" step="1" className="input" value={form.startTime} onChange={e=>set("startTime",e.target.value)} /></div>
-        <div><label className="label">End Time</label><input type="time" step="1" className="input" value={form.endTime} onChange={e=>set("endTime",e.target.value)} /></div>
-      </div>
-      <div><label className="label">Registration Deadline (ISO)</label><input className="input" placeholder="2026-07-07T15:00:00" value={form.registrationDeadline} onChange={e=>set("registrationDeadline",e.target.value)} /></div>
+      <Section title="Contact">
+        <Grid>
+          <Field label="Contact Person"><input className="input" value={values.contactPersonName} onChange={(e) => set("contactPersonName", e.target.value)} /></Field>
+          <Field label="Contact Phone"><input className="input" value={values.contactPersonPhone} onChange={(e) => set("contactPersonPhone", e.target.value)} /></Field>
+        </Grid>
+      </Section>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div><label className="label">Venue</label><input className="input" value={form.venue} onChange={e=>set("venue",e.target.value)} /></div>
-        <div><label className="label">Additional Venue Info</label><input className="input" value={form.additionalVenueInfo} onChange={e=>set("additionalVenueInfo",e.target.value)} /></div>
-      </div>
+      <Section title="Banner">
+        <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && uploadBanner(e.target.files[0])} />
+        <p className="text-xs text-navy/50 mt-1">Available after the event is created.</p>
+      </Section>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <div><label className="label">Total Capacity</label><input type="number" className="input" value={form.totalCapacity} onChange={e=>set("totalCapacity",e.target.value)} /></div>
-        <div><label className="label">Max Tickets / Member</label><input type="number" className="input" value={form.maxTicketsPerMember} onChange={e=>set("maxTicketsPerMember",e.target.value)} /></div>
-        <div><label className="label">Free Tickets / Registration</label><input type="number" className="input" value={form.freeTicketsPerRegistration} onChange={e=>set("freeTicketsPerRegistration",e.target.value)} /></div>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <div><label className="label">Ticket Price</label><input type="number" step="0.01" className="input" value={form.ticketPrice} onChange={e=>set("ticketPrice",e.target.value)} /></div>
-        <div><label className="label">Platform Fee / Ticket</label><input type="number" step="0.01" className="input" value={form.platformFeePerTicket} onChange={e=>set("platformFeePerTicket",e.target.value)} /></div>
-        <div><label className="label">Minimum Age (optional)</label><input type="number" className="input" value={form.minimumAge} onChange={e=>set("minimumAge",e.target.value)} /></div>
-      </div>
-
-      <div>
-        <label className="label">Important Notes</label>
-        {form.importantNotes.map((n: string, i: number) => (
-          <input key={i} className="input mb-2" value={n} onChange={e=>setNote(i,e.target.value)} />
-        ))}
-        <button type="button" className="btn-outline" onClick={()=>set("importantNotes",[...form.importantNotes,""])}>+ Add note</button>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <div><label className="label">Contact Person Name</label><input className="input" value={form.contactPersonName} onChange={e=>set("contactPersonName",e.target.value)} /></div>
-        <div><label className="label">Contact Person Phone</label><input className="input" value={form.contactPersonPhone} onChange={e=>set("contactPersonPhone",e.target.value)} /></div>
-      </div>
-
-      <div><label className="label">Banner Image</label><input type="file" accept="image/*" onChange={e=>setBanner(e.target.files?.[0] || null)} /></div>
-
-      <div className="flex flex-wrap gap-2 border-t pt-4">
-        {!eventId && <button className="btn-primary" onClick={createDraft}>Create Draft</button>}
-        {eventId && <>
-          <button className="btn-outline" onClick={saveDraft}>Save Draft</button>
-          <button className="btn-primary" onClick={publish}>Publish</button>
-          <button className="btn-danger" onClick={cancel}>Cancel Event</button>
-        </>}
+      <div className="flex flex-wrap gap-2 sticky bottom-0 bg-cream/90 backdrop-blur border-t border-navy/10 p-3 -mx-4">
+        {!currentId ? (
+          <button className="btn-dark" disabled={busy !== null} onClick={createDraft}>{busy === "Create draft" ? "Creating…" : "Create Draft"}</button>
+        ) : (
+          <>
+            <button className="btn-dark" disabled={busy !== null} onClick={saveDraft}>{busy === "Save" ? "Saving…" : "Save Draft"}</button>
+            <button className="btn-primary" disabled={busy !== null} onClick={publish}>{busy === "Publish" ? "Publishing…" : "Publish"}</button>
+            <button className="btn-outline text-red-700 border-red-200 hover:bg-red-50" disabled={busy !== null} onClick={cancel}>Cancel Event</button>
+          </>
+        )}
       </div>
     </div>
   );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="card p-6">
+      <h3 className="font-display text-lg text-navy mb-4">{title}</h3>
+      {children}
+    </div>
+  );
+}
+function Grid({ cols = 2, children }: { cols?: number; children: React.ReactNode }) {
+  const map: Record<number, string> = { 2: "md:grid-cols-2", 3: "md:grid-cols-3", 4: "md:grid-cols-4" };
+  return <div className={`grid gap-4 ${map[cols] || "md:grid-cols-2"}`}>{children}</div>;
+}
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div><label className="label">{label}</label>{children}</div>;
 }

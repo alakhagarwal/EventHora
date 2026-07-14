@@ -1,69 +1,99 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { eventsApi, memberApi } from "@/src/lib/api";
-import { getSessionToken } from "@/src/lib/auth";
+import { api } from "@/lib/api";
+import { Calendar, Clock, MapPin } from "lucide-react";
 
-export default function EventDetail() {
+export default function EventDetails() {
   const { link } = useParams<{ link: string }>();
   const router = useRouter();
-  const [e, setE] = useState<any>(null);
+  const [ev, setEv] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
-  const [payment, setPayment] = useState<"ONLINE"|"AT_GATE">("ONLINE");
+  const [pay, setPay] = useState<"ONLINE" | "AT_GATE">("ONLINE");
   const [busy, setBusy] = useState(false);
 
-  useEffect(()=>{ eventsApi.publicDetail(link as string).then(setE).catch(x=>setErr(x.message)); },[link]);
+  useEffect(() => { api.publicEvent(link).then(setEv).catch((e) => setErr(e.message)); }, [link]);
 
-  async function book() {
-    setErr(null);
-    const st = getSessionToken();
-    if (!st) { router.push("/login"); return; }
-    setBusy(true);
+  const proceed = async () => {
+    setBusy(true); setErr(null);
     try {
-      const res = await memberApi.initiate(st, e.id, quantity, payment);
-      if (typeof window !== "undefined") {
-        localStorage.setItem("otpExpiresAt", String(Date.now() + res.expiresInSeconds*1000));
-        localStorage.setItem("otpMessage", res.message);
-      }
+      const raw = localStorage.getItem("memberSession");
+      if (!raw) { router.push("/login"); return; }
+      const sess = JSON.parse(raw);
+      const res: any = await api.initiateBooking({ sessionToken: sess.sessionToken, eventId: ev.id, quantity, paymentPreference: pay });
+      localStorage.setItem("bookingCtx", JSON.stringify({ ...res, eventId: ev.id, quantity, pay, startedAt: Date.now() }));
       router.push("/member/otp");
-    } catch (x: any) { setErr(x.message); } finally { setBusy(false); }
-  }
+    } catch (e: any) { setErr(e.message || "Could not initiate booking"); } finally { setBusy(false); }
+  };
 
-  if (err) return <p className="text-red-600">{err}</p>;
-  if (!e) return <p>Loading…</p>;
-  const max = e.maxTicketsPerMember || 1;
+  if (err && !ev) return <div className="mx-auto max-w-3xl px-6 py-16 text-red-600">{err}</div>;
+  if (!ev) return <div className="mx-auto max-w-3xl px-6 py-16 text-navy/60">Loading…</div>;
+
+  const max = ev.maxTicketsPerMember || 4;
 
   return (
-    <div className="grid gap-8 md:grid-cols-3">
-      <div className="md:col-span-2 space-y-4">
-        {e.bannerUrl && <img src={e.bannerUrl} alt={e.title} className="w-full rounded-xl object-cover" />}
-        <h1 className="text-3xl font-bold">{e.title}</h1>
-        <p className="text-slate-600">{e.eventDate} · {e.startTime} – {e.endTime} · {e.venue}</p>
-        <p className="whitespace-pre-line">{e.description}</p>
-        {e.importantNotes?.length > 0 && (
-          <div><h3 className="font-semibold">Important notes</h3>
-            <ul className="ml-6 list-disc text-sm text-slate-700">{e.importantNotes.map((n:string,i:number)=><li key={i}>{n}</li>)}</ul>
-          </div>
-        )}
-      </div>
-      <aside className="card h-fit p-4">
-        <h3 className="mb-3 font-semibold">Book tickets</h3>
-        {!e.registrationOpen && <p className="mb-2 text-sm text-red-600">Registration is closed.</p>}
-        {e.isSoldOut && <p className="mb-2 text-sm text-red-600">Sold out.</p>}
-        <div className="space-y-3">
-          <div><label className="label">Quantity (1–{max})</label>
-            <input type="number" min={1} max={max} className="input" value={quantity} onChange={ev=>setQuantity(Math.min(max,Math.max(1,Number(ev.target.value))))} />
-          </div>
-          <div><label className="label">Payment</label>
-            <select className="input" value={payment} onChange={ev=>setPayment(ev.target.value as any)}>
-              <option value="ONLINE">Online</option><option value="AT_GATE">At Gate</option>
-            </select>
-          </div>
-          <p className="text-sm text-slate-600">Ticket price: ₹{e.ticketPrice}</p>
-          <button disabled={!e.registrationOpen || e.isSoldOut || busy} onClick={book} className="btn-primary w-full">{busy?"Please wait…":"Proceed to OTP"}</button>
+    <div className="mx-auto max-w-6xl px-6 py-12">
+      <div className="card overflow-hidden">
+        <div className="relative aspect-[21/9] bg-navy/20">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={ev.bannerUrl || "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=2000&q=70"} alt={ev.title} className="h-full w-full object-cover" />
         </div>
-      </aside>
+        <div className="grid md:grid-cols-3 gap-8 p-8">
+          <div className="md:col-span-2">
+            <div className="eyebrow">{ev.category}</div>
+            <h1 className="h1 mt-2">{ev.title}</h1>
+            <div className="mt-4 flex flex-wrap gap-4 text-sm text-navy/70">
+              <span className="inline-flex items-center gap-1.5"><Calendar className="h-4 w-4" /> {ev.eventDate}</span>
+              <span className="inline-flex items-center gap-1.5"><Clock className="h-4 w-4" /> {ev.startTime?.slice(0,5)} – {ev.endTime?.slice(0,5)}</span>
+              <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4" /> {ev.venue}</span>
+            </div>
+            <p className="mt-6 whitespace-pre-line text-navy/80 leading-relaxed">{ev.description}</p>
+            {ev.importantNotes?.length > 0 && (
+              <div className="mt-8">
+                <h3 className="font-display text-xl text-navy mb-3">Important Notes</h3>
+                <ul className="list-disc pl-5 space-y-1 text-navy/80">
+                  {ev.importantNotes.map((n: string, i: number) => <li key={i}>{n}</li>)}
+                </ul>
+              </div>
+            )}
+            {ev.contactPersonName && (
+              <div className="mt-6 text-sm text-navy/70">
+                Contact: <span className="font-medium">{ev.contactPersonName}</span>
+                {ev.contactPersonPhone && <> · {ev.contactPersonPhone}</>}
+              </div>
+            )}
+          </div>
+
+          <aside className="card p-6 h-fit bg-cream border-gold/30">
+            <div className="text-xs uppercase tracking-widest text-gold-600">Price</div>
+            <div className="font-display text-3xl text-navy">₹{Number(ev.ticketPrice || 0).toLocaleString()}<span className="text-sm text-navy/60"> /ticket</span></div>
+            <div className="mt-4 text-xs text-navy/60">Free tickets per registration: {ev.freeTicketsPerRegistration ?? 0}</div>
+
+            <div className="mt-6">
+              <label className="label">Quantity (max {max})</label>
+              <input type="number" min={1} max={max} className="input" value={quantity} onChange={(e) => setQuantity(Math.min(max, Math.max(1, Number(e.target.value) || 1)))} />
+            </div>
+            <div className="mt-4">
+              <label className="label">Payment</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(["ONLINE", "AT_GATE"] as const).map((p) => (
+                  <button key={p} type="button" onClick={() => setPay(p)}
+                    className={`rounded-md border px-3 py-2 text-sm font-medium ${pay === p ? "bg-navy text-white border-navy" : "border-navy/20 text-navy hover:bg-navy/5"}`}>
+                    {p === "ONLINE" ? "Online" : "At Gate"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {err && <div className="mt-3 text-sm text-red-600">{err}</div>}
+            <button disabled={!ev.registrationOpen || busy} onClick={proceed}
+              className="btn-primary w-full mt-6 disabled:opacity-50 disabled:cursor-not-allowed">
+              {!ev.registrationOpen ? (ev.isSoldOut ? "Sold Out" : "Registration Closed") : busy ? "Please wait…" : "Book Now"}
+            </button>
+            <p className="mt-3 text-[11px] text-navy/50 text-center">Members must be verified. You will receive an OTP on your registered contact.</p>
+          </aside>
+        </div>
+      </div>
     </div>
   );
 }
