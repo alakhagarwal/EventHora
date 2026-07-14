@@ -2,8 +2,10 @@ package com.eventHora.backend.controller;
 
 import com.eventHora.backend.dto.InitiateBookingRequest;
 import com.eventHora.backend.dto.InitiateBookingResponse;
+import com.eventHora.backend.dto.RegistrationResponse;
 import com.eventHora.backend.dto.VerifyMemberRequest;
 import com.eventHora.backend.dto.VerifyMemberResponse;
+import com.eventHora.backend.dto.VerifyOtpRequest;
 import com.eventHora.backend.service.RegistrationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +47,19 @@ public class RegistrationController {
     @PostMapping("/initiate")
     public ResponseEntity<InitiateBookingResponse> initiateBooking(@Valid @RequestBody InitiateBookingRequest request) {
         return ResponseEntity.ok(registrationService.initiateBooking(request));
+    }
+
+    /**
+     * POST /api/registration/verify-otp
+     *
+     * Validates the OTP entered by the member, creates the Registration record,
+     * and returns the ticket reference and payment details.
+     *
+     * Access: PUBLIC (guarded internally by sessionToken + OTP)
+     */
+    @PostMapping("/verify-otp")
+    public ResponseEntity<RegistrationResponse> verifyOtp(@Valid @RequestBody VerifyOtpRequest request) {
+        return ResponseEntity.ok(registrationService.verifyOtp(request));
     }
 }
 

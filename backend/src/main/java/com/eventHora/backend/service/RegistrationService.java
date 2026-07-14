@@ -2,15 +2,19 @@ package com.eventHora.backend.service;
 
 import com.eventHora.backend.Enum.EventStatus;
 import com.eventHora.backend.Enum.MemberType;
+import com.eventHora.backend.Enum.PaymentPreference;
 import com.eventHora.backend.Enum.PaymentStatus;
 import com.eventHora.backend.dto.BookingIntent;
 import com.eventHora.backend.dto.InitiateBookingRequest;
 import com.eventHora.backend.dto.InitiateBookingResponse;
 import com.eventHora.backend.dto.MemberSession;
+import com.eventHora.backend.dto.RegistrationResponse;
 import com.eventHora.backend.dto.VerifyMemberRequest;
 import com.eventHora.backend.dto.VerifyMemberResponse;
+import com.eventHora.backend.dto.VerifyOtpRequest;
 import com.eventHora.backend.exception.ResourceNotFoundException;
 import com.eventHora.backend.model.Event;
+import com.eventHora.backend.model.Registration;
 import com.eventHora.backend.repository.EventRepository;
 import com.eventHora.backend.repository.RegistrationRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,6 +24,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Random;
@@ -166,6 +171,88 @@ public class RegistrationService {
         return InitiateBookingResponse.builder()
                 .message("OTP sent to " + maskedIdentifier)
                 .expiresInSeconds(OTP_TTL_SECONDS)
+                .build();
+    }
+
+    // ─── Endpoint 3: Verify OTP & Confirm Booking ─────────────────────────────
+
+    /**
+     * POST /api/registration/verify-otp
+     *
+     * Validates the OTP, creates the Registration record, and returns ticket details.
+     */
+    public RegistrationResponse verifyOtp(VerifyOtpRequest request) {
+
+        // 1. Validate session
+        MemberSession session = getSessionOrThrow(request.getSessionToken());
+
+        // 2. Get stored OTP from Redis
+        Object storedOtpObj = redisTemplate.opsForValue().get(OTP_PREFIX + request.getSessionToken());
+        if (storedOtpObj == null) {
+            throw new IllegalArgumentException("OTP has expired. Please start a new booking.");
+        }
+        String storedOtp = storedOtpObj.toString();
+
+        // 3. Compare OTP
+        if (!storedOtp.equals(request.getOtp())) {
+            throw new IllegalArgumentException("Invalid OTP. Please try again.");
+        }
+
+        // 4. Get booking intent from Redis
+        Object intentObj = redisTemplate.opsForValue().get(INTENT_PREFIX + request.getSessionToken());
+        if (intentObj == null) {
+            throw new IllegalArgumentException("Booking session expired. Please start a new booking.");
+        }
+        BookingIntent intent = objectMapper.convertValue(intentObj, BookingIntent.class);
+
+        // 5. Fetch event
+        Event event = eventRepository.findById(intent.getEventId())
+                .orElseThrow(() -> new ResourceNotFoundException("Event not found"));
+
+        // 6. Calculate total amount
+        int paidTickets = Math.max(0, intent.getQuantity() - event.getFreeTicketsPerRegistration());
+        BigDecimal totalAmount = event.getTicketPrice().multiply(BigDecimal.valueOf(paidTickets));
+
+        // 7. Determine payment status
+        PaymentStatus paymentStatus;
+        if (totalAmount.compareTo(BigDecimal.ZERO) == 0) {
+            paymentStatus = PaymentStatus.FREE;
+        } else if (intent.getPaymentPreference() == PaymentPreference.AT_GATE) {
+            paymentStatus = PaymentStatus.PAY_AT_GATE;
+        } else {
+            paymentStatus = PaymentStatus.PENDING;
+        }
+
+        // 8. Generate ticket reference
+        String ticketRef = "TKT-" + LocalDateTime.now().getYear() + "-" +
+                UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+
+        // 9. Create and save Registration
+        Registration registration = Registration.builder()
+                .memberId(session.getMemberId())
+                .memberType(session.getMemberType())
+                .event(event)
+                .quantity(intent.getQuantity())
+                .totalAmount(totalAmount)
+                .paymentStatus(paymentStatus)
+                .paymentPreference(intent.getPaymentPreference())
+                .ticketReference(ticketRef)
+                .build();
+        registrationRepository.save(registration);
+
+        // 10. Clean up Redis keys
+        redisTemplate.delete(OTP_PREFIX + request.getSessionToken());
+        redisTemplate.delete(INTENT_PREFIX + request.getSessionToken());
+
+        log.info("[BOOKING] Member {} booked {} ticket(s) for '{}' — ref: {} — status: {}",
+                session.getMemberId(), intent.getQuantity(), event.getTitle(), ticketRef, paymentStatus);
+
+        return RegistrationResponse.builder()
+                .ticketReference(ticketRef)
+                .eventTitle(event.getTitle())
+                .quantity(intent.getQuantity())
+                .totalAmount(totalAmount)
+                .paymentStatus(paymentStatus)
                 .build();
     }
 
