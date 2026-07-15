@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { api, displayStatus } from "@/lib/api";
 import EventForm from "@/components/EventForm";
 import { getSession } from "@/lib/auth";
 
@@ -31,7 +31,7 @@ export default function EditEvent() {
     <div className="mx-auto max-w-5xl px-6 py-12">
       <div className="flex items-end justify-between mb-8">
         <div>
-          <div className="eyebrow">Admin · {ev.status}</div>
+          <div className="eyebrow">Admin · {displayStatus(ev)}</div>
           <h1 className="h1 mt-2">{ev.title}</h1>
         </div>
         <Link href={`/admin/events/${id}/details`} className="btn-outline">View Details</Link>

@@ -15,8 +15,8 @@ export default function EventsPage() {
   );
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-16">
-      <div className="mb-10 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+    <div className="mx-auto max-w-7xl px-4 md:px-6 py-8 md:py-16">
+      <div className="mb-6 md:mb-10 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
           <div className="eyebrow">Discover</div>
           <h1 className="h1 mt-2">Upcoming Events</h1>
@@ -25,7 +25,7 @@ export default function EventsPage() {
       </div>
       {loading ? <div className="text-navy/60">Loading…</div> :
         filtered.length === 0 ? <div className="card p-10 text-center text-navy/60">No events found.</div> :
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 md:gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((e) => <EventCard key={e.id} event={e} href={`/events/${e.uniqueEventLink}`} actionLabel="Book Now" />)}
         </div>}
     </div>

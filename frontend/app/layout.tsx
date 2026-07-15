@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
+import MobileBottomNav from "@/components/MobileBottomNav";
 
 export const metadata: Metadata = {
   title: "EventHora — Premier Event Management",
@@ -11,6 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link
@@ -20,13 +22,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="min-h-screen">
         <Navbar />
-        <main>{children}</main>
-        <footer className="mt-24 border-t border-navy/10 bg-white/60">
+        <main className="mobile-safe-bottom">{children}</main>
+        <footer className="border-t border-navy/10 bg-white/60 hidden md:block">
           <div className="mx-auto max-w-7xl px-6 py-8 flex flex-col md:flex-row justify-between gap-4 text-sm text-navy/60">
             <div className="font-display text-navy text-lg">EventHora</div>
             <div>© {new Date().getFullYear()} EventHora. All rights reserved.</div>
           </div>
         </footer>
+        <MobileBottomNav />
       </body>
     </html>
   );

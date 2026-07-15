@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, displayStatus } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 
 export default function AdminEventDetails() {
@@ -25,7 +25,7 @@ export default function AdminEventDetails() {
         <div className="p-8 space-y-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="eyebrow">{ev.category} · {ev.status}</div>
+              <div className="eyebrow">{ev.category} · {displayStatus(ev)}</div>
               <h1 className="h1 mt-2">{ev.title}</h1>
             </div>
             <Link href={`/admin/events/${id}`} className="btn-primary">Edit Event</Link>

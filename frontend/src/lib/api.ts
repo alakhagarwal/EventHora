@@ -36,6 +36,12 @@ export async function apiFetch<T = any>(path: string, opts: Options = {}): Promi
   return data as T;
 }
 
+export function displayStatus(event: { status?: string; eventDate?: string }): string {
+  if (event.status === "CANCELLED") return "CANCELLED";
+  if (event.eventDate && new Date(event.eventDate) < new Date()) return "COMPLETED";
+  return event.status || "DRAFT";
+}
+
 // Domain shortcuts
 export const api = {
   login: (email: string, password: string) =>

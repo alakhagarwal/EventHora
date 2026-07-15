@@ -23,23 +23,23 @@ export default function UsersPage() {
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-12">
-      <div className="flex items-end justify-between mb-8">
+    <div className="mx-auto max-w-6xl px-4 md:px-6 py-8 md:py-12">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-6 md:mb-8 gap-4">
         <div>
           <div className="eyebrow">Admin</div>
           <h1 className="h1 mt-2">User Management</h1>
         </div>
-        <Link href="/admin/users/new" className="btn-primary">+ New User</Link>
+        <Link href="/admin/users/new" className="btn-primary self-start sm:self-auto">+ New User</Link>
       </div>
       {msg && <div className="mb-4 text-sm text-navy/70">{msg}</div>}
-      <div className="card overflow-hidden">
+      <div className="card overflow-hidden table-scroll-mobile">
         <table className="w-full text-sm">
           <thead className="bg-navy text-white">
             <tr>
               <th className="text-left px-4 py-3">Name</th>
               <th className="text-left px-4 py-3">Email</th>
               <th className="text-left px-4 py-3">Role</th>
-              <th className="text-left px-4 py-3">Created</th>
+              <th className="text-left px-4 py-3 hidden sm:table-cell">Created</th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
@@ -47,9 +47,9 @@ export default function UsersPage() {
             {users.map((u) => (
               <tr key={u.id || u.email} className="border-t border-navy/10">
                 <td className="px-4 py-3 font-medium">{u.name}</td>
-                <td className="px-4 py-3">{u.email}</td>
+                <td className="px-4 py-3 text-xs md:text-sm">{u.email}</td>
                 <td className="px-4 py-3"><span className="chip">{u.role}</span></td>
-                <td className="px-4 py-3 text-navy/60">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—"}</td>
+                <td className="px-4 py-3 text-navy/60 hidden sm:table-cell">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—"}</td>
                 <td className="px-4 py-3 text-right">
                   <button className="text-red-600 text-xs font-semibold hover:underline" onClick={() => deactivate(u.email)}>Deactivate</button>
                 </td>
