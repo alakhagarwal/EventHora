@@ -52,14 +52,17 @@ public class RegistrationController {
     /**
      * POST /api/registration/verify-otp
      *
-     * Validates the OTP entered by the member, creates the Registration record,
-     * and returns the ticket reference and payment details.
+     * Verifies the 6-digit OTP and finalizes the booking in Postgres.
+     * Returns one of three outcomes based on payment path:
+     *   - FREE:        Booking confirmed immediately (free event).
+     *   - PAY_AT_GATE: Seat reserved, payment collected at the venue.
+     *   - PENDING:     Razorpay order created; frontend must open the payment popup.
      *
      * Access: PUBLIC (guarded internally by sessionToken + OTP)
      */
     @PostMapping("/verify-otp")
     public ResponseEntity<RegistrationResponse> verifyOtp(@Valid @RequestBody VerifyOtpRequest request) {
-        return ResponseEntity.ok(registrationService.verifyOtp(request));
+        return ResponseEntity.ok(registrationService.verifyOtpAndBook(request));
     }
 }
 

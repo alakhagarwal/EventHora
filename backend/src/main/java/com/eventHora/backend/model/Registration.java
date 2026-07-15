@@ -75,6 +75,15 @@ public class Registration {
     @Column
     private String razorpayOrderId;        // Razorpay order ID — null for free/at-gate bookings
 
+    @Column
+    private String razorpayPaymentId;      // Razorpay payment ID — set after payment.captured (e.g. "pay_Qx3Rabc...")
+
+    // ─── Gate Check-In ────────────────────────────────────────────────────────
+
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean isCheckedIn = false;   // Flipped to true when staff scans QR at the gate
+
     // ─── Ticket ───────────────────────────────────────────────────────────────
 
     @Column(nullable = false, unique = true)

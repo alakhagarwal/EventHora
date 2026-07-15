@@ -725,3 +725,126 @@ POST /api/registration/initiate
 
 ---
 
+### 3. Verify OTP & Finalize Booking
+
+The grand finale of the member booking flow. Verifies the OTP, calculates the price, persists the booking in Postgres, and returns one of three outcomes based on the payment path.
+
+```
+POST /api/registration/verify-otp
+```
+
+**Access:** PUBLIC (internally guarded by `sessionToken` + OTP)
+
+**Request Body:**
+```json
+{
+  "sessionToken": "1ef1bb1b-31cb-4f39-08fa-2b6edcdd08c3",
+  "otp": "458129"
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `sessionToken` | String | ✅ | Token from `/verify-member` |
+| `otp` | String | ✅ | Exactly 6 digits |
+
+---
+
+#### Path A — Free Booking (`paymentStatus: "FREE"`)
+
+Triggered when `totalAmount == 0` (all tickets are free based on `freeTicketsPerRegistration`).
+
+**Success Response `200 OK`:**
+```json
+{
+  "ticketReference": "TKT-2026-AB12CD",
+  "eventTitle": "Summer Gala Dinner 2026",
+  "quantity": 1,
+  "totalAmount": 0.00,
+  "paymentStatus": "FREE",
+  "razorpayOrderId": null
+}
+```
+→ Frontend shows the **"Booking Confirmed!"** screen immediately.
+
+---
+
+#### Path B — Pay at Gate (`paymentStatus: "PAY_AT_GATE"`)
+
+Triggered when `paymentPreference == "AT_GATE"` and the event has a paid amount.
+
+**Success Response `200 OK`:**
+```json
+{
+  "ticketReference": "TKT-2026-XY9Z01",
+  "eventTitle": "Summer Gala Dinner 2026",
+  "quantity": 3,
+  "totalAmount": 2000.00,
+  "paymentStatus": "PAY_AT_GATE",
+  "razorpayOrderId": null
+}
+```
+→ Frontend shows a **"Seat Reserved — Pay ₹2000 at the venue"** screen with the QR code.
+
+---
+
+#### Path C — Online Payment (`paymentStatus: "PENDING"`)
+
+Triggered when `paymentPreference == "ONLINE"` and `totalAmount > 0`. A Razorpay Order is created behind the scenes.
+
+**Success Response `200 OK`:**
+```json
+{
+  "ticketReference": "TKT-2026-MN4P8Q",
+  "eventTitle": "Summer Gala Dinner 2026",
+  "quantity": 3,
+  "totalAmount": 2000.00,
+  "paymentStatus": "PENDING",
+  "razorpayOrderId": "order_PwZa8xyzABC123"
+}
+```
+→ Frontend uses `razorpayOrderId` to open the **Razorpay JS Checkout popup** for the user to pay.
+
+---
+
+#### Price Calculation Logic
+
+```
+paidTickets = max(0, quantity - event.freeTicketsPerRegistration)
+totalAmount = paidTickets × event.ticketPrice
+```
+
+**Example:** Event has `freeTicketsPerRegistration = 1`, `ticketPrice = ₹1000`.
+- Member books 3 tickets → `paidTickets = 3 - 1 = 2` → `totalAmount = ₹2000`
+
+---
+
+#### Ticket Reference Format
+
+```
+TKT-{YEAR}-{6 random alphanumeric chars}
+e.g. TKT-2026-AB12CD
+```
+
+The ticket reference is unique across the entire system and is what gets encoded into the member's QR code.
+
+---
+
+#### What Happens in Redis After This Call
+
+After booking is finalized (any path), the backend cleans up Redis:
+- ❌ `otp:{sessionToken}` — deleted
+- ❌ `intent:{sessionToken}` — deleted
+- ✅ `session:{sessionToken}` — kept (member can still navigate the app)
+
+---
+
+**Error Responses:**
+- `401 Unauthorized`: OTP is wrong — `"Incorrect OTP. Please try again."`
+- `401 Unauthorized`: OTP expired (5-min window passed) — `"OTP has expired. Please restart the booking process."`
+- `401 Unauthorized`: Booking session expired (10-min intent window) — `"Booking session expired. Please restart the booking process."`
+- `400 Bad Request`: Event is no longer PUBLISHED or deadline has passed.
+- `500 Internal Server Error`: Razorpay API call failed (Path C only) — `"Payment gateway error. Please try again."`
+
+---
+
