@@ -6,6 +6,7 @@ import com.eventHora.backend.exception.ResourceNotFoundException;
 import com.eventHora.backend.model.Event;
 import com.eventHora.backend.model.SystemUser;
 import com.eventHora.backend.repository.EventRepository;
+import com.eventHora.backend.repository.RegistrationRepository;
 import com.eventHora.backend.repository.SystemUserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,7 @@ public class EventService {
     private final EventRepository eventRepository;
     private final SystemUserRepository userRepository;
     private final S3Service s3Service;
+    private final RegistrationRepository registrationRepository;
 
     // ─── Create ───────────────────────────────────────────────────────────────
 
@@ -202,7 +204,7 @@ public class EventService {
     // ─── Mappers ──────────────────────────────────────────────────────────────
 
     private EventResponse toEventResponse(Event event) {
-        int booked = 0; // will be updated once the Registration module is in place
+        int booked = registrationRepository.sumLockedTicketsForEvent(event.getId());
         return EventResponse.builder()
                 .id(event.getId())
                 .title(event.getTitle())
@@ -237,7 +239,7 @@ public class EventService {
     }
 
     private EventSummaryResponse toSummaryResponse(Event event) {
-        int booked = 0; // TODO: Update this when Registration module is built
+        int booked = registrationRepository.sumLockedTicketsForEvent(event.getId());
         boolean isSoldOut = booked >= event.getTotalCapacity();
         
         return EventSummaryResponse.builder()
@@ -265,7 +267,7 @@ public class EventService {
     }
 
     private PublicEventResponse toPublicEventResponse(Event event) {
-        int booked = 0; // TODO: Update this when Registration module is built
+        int booked = registrationRepository.sumLockedTicketsForEvent(event.getId());
         boolean isSoldOut = booked >= event.getTotalCapacity();
         
         return PublicEventResponse.builder()

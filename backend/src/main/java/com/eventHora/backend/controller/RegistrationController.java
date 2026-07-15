@@ -2,8 +2,10 @@ package com.eventHora.backend.controller;
 
 import com.eventHora.backend.dto.InitiateBookingRequest;
 import com.eventHora.backend.dto.InitiateBookingResponse;
+import com.eventHora.backend.dto.RegistrationResponse;
 import com.eventHora.backend.dto.VerifyMemberRequest;
 import com.eventHora.backend.dto.VerifyMemberResponse;
+import com.eventHora.backend.dto.VerifyOtpRequest;
 import com.eventHora.backend.service.RegistrationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +47,22 @@ public class RegistrationController {
     @PostMapping("/initiate")
     public ResponseEntity<InitiateBookingResponse> initiateBooking(@Valid @RequestBody InitiateBookingRequest request) {
         return ResponseEntity.ok(registrationService.initiateBooking(request));
+    }
+
+    /**
+     * POST /api/registration/verify-otp
+     *
+     * Verifies the 6-digit OTP and finalizes the booking in Postgres.
+     * Returns one of three outcomes based on payment path:
+     *   - FREE:        Booking confirmed immediately (free event).
+     *   - PAY_AT_GATE: Seat reserved, payment collected at the venue.
+     *   - PENDING:     Razorpay order created; frontend must open the payment popup.
+     *
+     * Access: PUBLIC (guarded internally by sessionToken + OTP)
+     */
+    @PostMapping("/verify-otp")
+    public ResponseEntity<RegistrationResponse> verifyOtp(@Valid @RequestBody VerifyOtpRequest request) {
+        return ResponseEntity.ok(registrationService.verifyOtpAndBook(request));
     }
 }
 

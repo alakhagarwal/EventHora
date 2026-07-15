@@ -2,26 +2,34 @@ package com.eventHora.backend.service;
 
 import com.eventHora.backend.Enum.EventStatus;
 import com.eventHora.backend.Enum.MemberType;
+import com.eventHora.backend.Enum.PaymentPreference;
 import com.eventHora.backend.Enum.PaymentStatus;
 import com.eventHora.backend.dto.BookingIntent;
 import com.eventHora.backend.dto.InitiateBookingRequest;
 import com.eventHora.backend.dto.InitiateBookingResponse;
 import com.eventHora.backend.dto.MemberSession;
+import com.eventHora.backend.dto.RegistrationResponse;
 import com.eventHora.backend.dto.VerifyMemberRequest;
 import com.eventHora.backend.dto.VerifyMemberResponse;
+import com.eventHora.backend.dto.VerifyOtpRequest;
 import com.eventHora.backend.exception.ResourceNotFoundException;
 import com.eventHora.backend.model.Event;
+import com.eventHora.backend.model.Registration;
 import com.eventHora.backend.repository.EventRepository;
 import com.eventHora.backend.repository.RegistrationRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.razorpay.RazorpayException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.Year;
 import java.util.Random;
 import java.util.UUID;
 
@@ -33,6 +41,7 @@ public class RegistrationService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final EventRepository eventRepository;
     private final RegistrationRepository registrationRepository;
+    private final RazorpayService razorpayService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // ─── Redis Key Prefixes ────────────────────────────────────────────────────
@@ -169,6 +178,169 @@ public class RegistrationService {
                 .build();
     }
 
+    // ─── Endpoint 3: Verify OTP & Finalize Booking ─────────────────────────────────
+
+    /**
+     * POST /api/registration/verify-otp
+     *
+     * The grand finale of the booking flow.
+     * Verifies the OTP, calculates the price, and finalizes the booking in Postgres
+     * via one of three paths:
+     *
+     *  PATH A — Free event (totalAmount == 0)
+     *           → Registration saved with status FREE. Ticket returned immediately.
+     *
+     *  PATH B — Pay at Gate (paymentPreference == AT_GATE)
+     *           → Registration saved with status PAY_AT_GATE. Ticket returned immediately.
+     *
+     *  PATH C — Online Payment (paymentPreference == ONLINE && totalAmount > 0)
+     *           → Razorpay order created. Registration saved as PENDING.
+     *             razorpayOrderId returned so the frontend can open the payment popup.
+     */
+    @Transactional
+    public RegistrationResponse verifyOtpAndBook(VerifyOtpRequest request) {
+
+        // ── Step 1: Validate OTP ───────────────────────────────────────────────
+        String otpKey = OTP_PREFIX + request.getSessionToken();
+        Object storedOtp = redisTemplate.opsForValue().get(otpKey);
+
+        if (storedOtp == null) {
+            throw new BadCredentialsException("OTP has expired. Please restart the booking process.");
+        }
+        if (!storedOtp.toString().equals(request.getOtp())) {
+            throw new BadCredentialsException("Incorrect OTP. Please try again.");
+        }
+
+        // ── Step 2: Retrieve the locked BookingIntent from Redis ───────────────
+        String intentKey = INTENT_PREFIX + request.getSessionToken();
+        Object rawIntent = redisTemplate.opsForValue().get(intentKey);
+        if (rawIntent == null) {
+            throw new BadCredentialsException("Booking session expired. Please restart the booking process.");
+        }
+        BookingIntent intent = objectMapper.convertValue(rawIntent, BookingIntent.class);
+
+        // ── Step 3: Retrieve the MemberSession from Redis ──────────────────────
+        MemberSession session = getSessionOrThrow(request.getSessionToken());
+
+        // ── Step 4: Re-fetch the Event from Postgres ───────────────────────────
+        // We re-validate here in case the event was cancelled between /initiate and now.
+        Event event = eventRepository.findById(intent.getEventId())
+                .orElseThrow(() -> new ResourceNotFoundException("Event no longer exists."));
+
+        if (event.getStatus() != EventStatus.PUBLISHED) {
+            throw new IllegalArgumentException("This event is no longer accepting registrations.");
+        }
+        if (LocalDateTime.now().isAfter(event.getRegistrationDeadline())) {
+            throw new IllegalArgumentException("The registration deadline for this event has passed.");
+        }
+
+        // ── Step 5: Calculate Price ────────────────────────────────────────────
+        int quantity        = intent.getQuantity();
+        int freeTickets     = event.getFreeTicketsPerRegistration();
+        int paidTickets     = Math.max(0, quantity - freeTickets);
+        BigDecimal totalAmount = event.getTicketPrice()
+                .multiply(BigDecimal.valueOf(paidTickets));
+
+        // ── Step 6: Generate Ticket Reference ─────────────────────────────────
+        String ticketReference = generateTicketReference();
+
+        // ── Step 7: Three-Way Split ────────────────────────────────────────────
+        Registration registration;
+
+        // PATH A: Completely FREE
+        if (totalAmount.compareTo(BigDecimal.ZERO) == 0) {
+            log.info("[BOOKING] PATH A (FREE) — member={}, event={}, qty={}",
+                    session.getMemberId(), event.getId(), quantity);
+
+            registration = Registration.builder()
+                    .memberId(session.getMemberId())
+                    .memberType(session.getMemberType())
+                    .event(event)
+                    .quantity(quantity)
+                    .totalAmount(BigDecimal.ZERO)
+                    .paymentStatus(PaymentStatus.FREE)
+                    .paymentPreference(intent.getPaymentPreference())
+                    .ticketReference(ticketReference)
+                    .build();
+
+            registrationRepository.save(registration);
+            cleanUpRedis(request.getSessionToken());
+
+            return RegistrationResponse.builder()
+                    .ticketReference(ticketReference)
+                    .eventTitle(event.getTitle())
+                    .quantity(quantity)
+                    .totalAmount(BigDecimal.ZERO)
+                    .paymentStatus(PaymentStatus.FREE)
+                    .build();
+        }
+
+        // PATH B: Pay at the Gate
+        if (intent.getPaymentPreference() == PaymentPreference.AT_GATE) {
+            log.info("[BOOKING] PATH B (PAY_AT_GATE) — member={}, event={}, qty={}, amount={}",
+                    session.getMemberId(), event.getId(), quantity, totalAmount);
+
+            registration = Registration.builder()
+                    .memberId(session.getMemberId())
+                    .memberType(session.getMemberType())
+                    .event(event)
+                    .quantity(quantity)
+                    .totalAmount(totalAmount)
+                    .paymentStatus(PaymentStatus.PAY_AT_GATE)
+                    .paymentPreference(intent.getPaymentPreference())
+                    .ticketReference(ticketReference)
+                    .build();
+
+            registrationRepository.save(registration);
+            cleanUpRedis(request.getSessionToken());
+
+            return RegistrationResponse.builder()
+                    .ticketReference(ticketReference)
+                    .eventTitle(event.getTitle())
+                    .quantity(quantity)
+                    .totalAmount(totalAmount)
+                    .paymentStatus(PaymentStatus.PAY_AT_GATE)
+                    .build();
+        }
+
+        // PATH C: Online Payment via Razorpay
+        log.info("[BOOKING] PATH C (ONLINE) — member={}, event={}, qty={}, amount={}",
+                session.getMemberId(), event.getId(), quantity, totalAmount);
+
+        String razorpayOrderId;
+        try {
+            razorpayOrderId = razorpayService.createOrder(totalAmount, ticketReference);
+        } catch (RazorpayException e) {
+            log.error("[RAZORPAY] Failed to create order for ticket {}: {}", ticketReference, e.getMessage());
+            throw new IllegalStateException("Payment gateway error. Please try again.");
+        }
+
+        registration = Registration.builder()
+                .memberId(session.getMemberId())
+                .memberType(session.getMemberType())
+                .event(event)
+                .quantity(quantity)
+                .totalAmount(totalAmount)
+                .paymentStatus(PaymentStatus.PENDING)
+                .paymentPreference(intent.getPaymentPreference())
+                .razorpayOrderId(razorpayOrderId)
+                .ticketReference(ticketReference)
+                .build();
+
+        registrationRepository.save(registration);
+        cleanUpRedis(request.getSessionToken());
+
+        return RegistrationResponse.builder()
+                .ticketReference(ticketReference)
+                .eventTitle(event.getTitle())
+                .quantity(quantity)
+                .totalAmount(totalAmount)
+                .paymentStatus(PaymentStatus.PENDING)
+                .razorpayOrderId(razorpayOrderId)
+                .build();
+    }
+
+
     // ─── Private Helpers ──────────────────────────────────────────────────────
 
     /**
@@ -207,5 +379,31 @@ public class RegistrationService {
             if (atIndex <= 1) return "****" + identifier.substring(atIndex);
             return identifier.charAt(0) + "****" + identifier.substring(atIndex);
         }
+    }
+
+    /**
+     * Deletes the OTP and BookingIntent keys from Redis after a booking is finalized.
+     * The session key is kept alive — the member may still navigate within the app.
+     */
+    private void cleanUpRedis(String sessionToken) {
+        redisTemplate.delete(OTP_PREFIX + sessionToken);
+        redisTemplate.delete(INTENT_PREFIX + sessionToken);
+    }
+
+    /**
+     * Generates a unique, user-friendly ticket reference in the format:
+     *   TKT-2026-AB12CD
+     *
+     * The 6-char alphanumeric suffix is randomly generated. Collision probability
+     * is negligible at typical event scales (< 10,000 tickets per event).
+     */
+    private String generateTicketReference() {
+        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        Random random = new Random();
+        StringBuilder suffix = new StringBuilder(6);
+        for (int i = 0; i < 6; i++) {
+            suffix.append(chars.charAt(random.nextInt(chars.length())));
+        }
+        return "TKT-" + Year.now().getValue() + "-" + suffix;
     }
 }

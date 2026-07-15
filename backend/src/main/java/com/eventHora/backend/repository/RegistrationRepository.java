@@ -36,4 +36,16 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
      * Used to prevent duplicate bookings.
      */
     Optional<Registration> findByMemberIdAndEventId(String memberId, UUID eventId);
+
+    /**
+     * Looks up a registration by the user-facing ticket reference.
+     * Used by /confirm-payment and the webhook to finalize a PENDING booking.
+     */
+    Optional<Registration> findByTicketReference(String ticketReference);
+
+    /**
+     * Looks up a registration by the Razorpay order ID.
+     * Used by the webhook to find a PENDING booking when the frontend fails to call /confirm-payment.
+     */
+    Optional<Registration> findByRazorpayOrderId(String razorpayOrderId);
 }
