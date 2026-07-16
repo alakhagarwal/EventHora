@@ -142,4 +142,37 @@ public class RazorpayService {
             return false;
         }
     }
+
+    // ─── Refunds ───────────────────────────────────────────────────────────────
+
+    /**
+     * Initiates a full refund for a previously captured Razorpay payment.
+     *
+     * Called when the sold-out race condition occurs in confirmPayment():
+     *   — The member's card was charged by Razorpay, but the event just sold out
+     *     before we could confirm their ticket. We owe them a full refund.
+     *
+     * Speed options:
+     *   "normal"  — Standard refund, 5-7 business days. Reliable for all banks.
+     *   "optimum" — Instant if the member's bank supports it, else falls back to normal.
+     *
+     * We deliberately use "normal" for maximum bank compatibility.
+     *
+     * @param razorpayPaymentId  The payment ID from Razorpay (e.g. "pay_Qx3Rabc...")
+     * @throws RazorpayException If the Razorpay API call fails (caller should handle gracefully)
+     */
+    public void initiateRefund(String razorpayPaymentId) throws RazorpayException {
+        RazorpayClient client = new RazorpayClient(keyId, keySecret);
+
+        // No "amount" field = full refund of the entire captured amount
+        JSONObject refundRequest = new JSONObject();
+        refundRequest.put("speed", "normal");
+
+        com.razorpay.Refund refund = client.payments.refund(razorpayPaymentId, refundRequest);
+
+        log.info("[RAZORPAY] Refund initiated ✅ — paymentId={}, refundId={}, status={}",
+                razorpayPaymentId,
+                refund.get("id"),
+                refund.get("status"));
+    }
 }

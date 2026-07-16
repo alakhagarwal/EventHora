@@ -5,6 +5,7 @@ import com.eventHora.backend.Enum.MemberType;
 import com.eventHora.backend.Enum.PaymentPreference;
 import com.eventHora.backend.Enum.PaymentStatus;
 import com.eventHora.backend.dto.BookingIntent;
+import com.eventHora.backend.dto.ConfirmPaymentRequest;
 import com.eventHora.backend.dto.InitiateBookingRequest;
 import com.eventHora.backend.dto.InitiateBookingResponse;
 import com.eventHora.backend.dto.MemberSession;
@@ -147,9 +148,17 @@ public class RegistrationService {
         }
 
         // 7. Duplicate booking check — one registration per member per event
+        // We block only truly finalised statuses: CONFIRMED, FREE, PAY_AT_GATE.
+        // FAILED and PENDING are both retryable:
+        //   - FAILED: previous payment attempt was rejected by Razorpay or sold-out guard.
+        //   - PENDING: user opened the Razorpay popup but closed it without paying.
+        //     Razorpay does NOT send a failure webhook for an abandoned popup, so the row
+        //     stays PENDING indefinitely. Rather than trapping the member, we allow them
+        //     to restart and reuse the same database row with a fresh order ID.
         boolean alreadyBooked = registrationRepository
                 .findByMemberIdAndEventId(session.getMemberId(), event.getId())
-                .map(reg -> reg.getPaymentStatus() != PaymentStatus.FAILED)
+                .map(reg -> reg.getPaymentStatus() != PaymentStatus.FAILED
+                         && reg.getPaymentStatus() != PaymentStatus.PENDING)
                 .orElse(false);
         if (alreadyBooked) {
             throw new IllegalStateException("You have already registered for this event.");
@@ -244,24 +253,67 @@ public class RegistrationService {
         // ── Step 6: Generate Ticket Reference ─────────────────────────────────
         String ticketReference = generateTicketReference();
 
-        // ── Step 7: Three-Way Split ────────────────────────────────────────────
-        Registration registration;
+        // ── Step 7: Resolve Registration — reuse FAILED row or create fresh ────
+        // If the member had a previous FAILED attempt for this event (e.g. card
+        // declined, sold-out race condition), a row already exists in Postgres
+        // with a UNIQUE constraint on (member_id, event_id). Inserting a new row
+        // would throw a constraint violation. Instead, we find and UPDATE that
+        // row, giving the member a fresh ticket reference and a clean slate.
+        Registration registration = registrationRepository
+                .findByMemberIdAndEventId(session.getMemberId(), event.getId())
+                .orElse(null);
 
-        // PATH A: Completely FREE
+        boolean isRetry = registration != null
+                && (registration.getPaymentStatus() == PaymentStatus.FAILED
+                    || registration.getPaymentStatus() == PaymentStatus.PENDING);
+        if (isRetry) {
+            log.info("[BOOKING] Retry detected (previous status={}) — reusing registration for member={}, event={}",
+                    registration.getPaymentStatus(), session.getMemberId(), event.getId());
+            // Give the retry a fresh timestamp instead of the original attempt time
+            registration.setBookedAt(LocalDateTime.now());
+            // Reset check-in state defensively
+            registration.setCheckedIn(false);
+            // If the previous attempt created a Razorpay order (PENDING path), that order
+            // is now abandoned. A new order will be created below in Path C if needed.
+            // Explicitly null it out here so no stale order ID leaks into Paths A/B.
+            registration.setRazorpayOrderId(null);
+            registration.setRazorpayPaymentId(null);
+        } else {
+            // Fresh booking — create a new empty registration to populate below
+            registration = new Registration();
+            registration.setMemberId(session.getMemberId());
+            registration.setMemberType(session.getMemberType());
+            registration.setEvent(event);
+        }
+
+        // ── Step 5.5: Re-check Capacity (Bug 3 fix) ──────────────────────────────
+        // Between /initiate (where capacity was first checked) and now, up to 10 minutes
+        // may have elapsed. Other members may have taken remaining seats.
+        // Paths A (FREE) and B (PAY_AT_GATE) lock seats immediately on save,
+        // so we MUST verify capacity again right here before we write to the database.
+        // Note: for Path C (PENDING), this guard still applies — even though PENDING
+        // itself doesn't lock a seat, we should not issue a Razorpay order if the
+        // event is already known to be sold out at this moment.
+        int lockedNow = registrationRepository.sumLockedTicketsForEvent(event.getId());
+        int remainingNow = event.getTotalCapacity() - lockedNow;
+        if (quantity > remainingNow) {
+            throw new IllegalArgumentException(
+                    "Sorry, this event just filled up. Only " + remainingNow
+                    + " seat(s) remain — please adjust your quantity or try another event.");
+        }
+
+        // ── Step 8: Three-Way Split ────────────────────────────────────────────
         if (totalAmount.compareTo(BigDecimal.ZERO) == 0) {
             log.info("[BOOKING] PATH A (FREE) — member={}, event={}, qty={}",
                     session.getMemberId(), event.getId(), quantity);
 
-            registration = Registration.builder()
-                    .memberId(session.getMemberId())
-                    .memberType(session.getMemberType())
-                    .event(event)
-                    .quantity(quantity)
-                    .totalAmount(BigDecimal.ZERO)
-                    .paymentStatus(PaymentStatus.FREE)
-                    .paymentPreference(intent.getPaymentPreference())
-                    .ticketReference(ticketReference)
-                    .build();
+            registration.setQuantity(quantity);
+            registration.setTotalAmount(BigDecimal.ZERO);
+            registration.setPaymentStatus(PaymentStatus.FREE);
+            registration.setPaymentPreference(intent.getPaymentPreference());
+            registration.setTicketReference(ticketReference);
+            registration.setRazorpayOrderId(null);
+            registration.setRazorpayPaymentId(null);
 
             registrationRepository.save(registration);
             cleanUpRedis(request.getSessionToken());
@@ -280,16 +332,13 @@ public class RegistrationService {
             log.info("[BOOKING] PATH B (PAY_AT_GATE) — member={}, event={}, qty={}, amount={}",
                     session.getMemberId(), event.getId(), quantity, totalAmount);
 
-            registration = Registration.builder()
-                    .memberId(session.getMemberId())
-                    .memberType(session.getMemberType())
-                    .event(event)
-                    .quantity(quantity)
-                    .totalAmount(totalAmount)
-                    .paymentStatus(PaymentStatus.PAY_AT_GATE)
-                    .paymentPreference(intent.getPaymentPreference())
-                    .ticketReference(ticketReference)
-                    .build();
+            registration.setQuantity(quantity);
+            registration.setTotalAmount(totalAmount);
+            registration.setPaymentStatus(PaymentStatus.PAY_AT_GATE);
+            registration.setPaymentPreference(intent.getPaymentPreference());
+            registration.setTicketReference(ticketReference);
+            registration.setRazorpayOrderId(null);
+            registration.setRazorpayPaymentId(null);
 
             registrationRepository.save(registration);
             cleanUpRedis(request.getSessionToken());
@@ -315,17 +364,13 @@ public class RegistrationService {
             throw new IllegalStateException("Payment gateway error. Please try again.");
         }
 
-        registration = Registration.builder()
-                .memberId(session.getMemberId())
-                .memberType(session.getMemberType())
-                .event(event)
-                .quantity(quantity)
-                .totalAmount(totalAmount)
-                .paymentStatus(PaymentStatus.PENDING)
-                .paymentPreference(intent.getPaymentPreference())
-                .razorpayOrderId(razorpayOrderId)
-                .ticketReference(ticketReference)
-                .build();
+        registration.setQuantity(quantity);
+        registration.setTotalAmount(totalAmount);
+        registration.setPaymentStatus(PaymentStatus.PENDING);
+        registration.setPaymentPreference(intent.getPaymentPreference());
+        registration.setRazorpayOrderId(razorpayOrderId);
+        registration.setTicketReference(ticketReference);
+        registration.setRazorpayPaymentId(null); // reset any previous failed payment ID
 
         registrationRepository.save(registration);
         cleanUpRedis(request.getSessionToken());
@@ -338,6 +383,113 @@ public class RegistrationService {
                 .paymentStatus(PaymentStatus.PENDING)
                 .razorpayOrderId(razorpayOrderId)
                 .build();
+    }
+
+    // ─── Endpoint 4: Confirm Online Payment ────────────────────────────────────────────
+
+    /**
+     * POST /api/registration/confirm-payment
+     *
+     * Called by the frontend immediately after the Razorpay JS popup closes
+     * with a successful payment. This is the "fast path" — it confirms the
+     * ticket almost instantly so the user sees their ticket without delay.
+     *
+     * The webhook (/api/webhooks/razorpay) is the backup path that handles
+     * cases where this endpoint is never reached (browser crash, network drop).
+     *
+     * Security layers:
+     *   1. Razorpay signature verification — proves the payment data is authentic.
+     *   2. Idempotency check — safely handles duplicate calls (webhook + frontend racing).
+     *   3. Sold-out race condition guard — re-checks capacity before confirming.
+     */
+    @Transactional
+    public RegistrationResponse confirmPayment(ConfirmPaymentRequest request) {
+
+        // ── Step 1: Find the Registration ─────────────────────────────────────────
+        Registration registration = registrationRepository
+                .findByTicketReference(request.getTicketReference())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Ticket not found: " + request.getTicketReference()));
+
+        // ── Step 2: Idempotency — handle duplicate calls gracefully ──────────────
+        // The webhook may have already confirmed this ticket before the frontend
+        // managed to call this endpoint. That is perfectly fine — just return success.
+        if (registration.getPaymentStatus() == PaymentStatus.CONFIRMED) {
+            log.info("[CONFIRM-PAYMENT] Ticket {} already CONFIRMED (idempotent call), returning success",
+                    request.getTicketReference());
+            return buildRegistrationResponse(registration);
+        }
+
+        // ── Step 3: Reject terminal states ───────────────────────────────────────
+        // FAILED means Razorpay already reported a failed/expired payment.
+        // Any other non-PENDING status (FREE, PAY_AT_GATE) means this was not
+        // an online payment — confirm-payment should not be called for those.
+        if (registration.getPaymentStatus() != PaymentStatus.PENDING) {
+            throw new IllegalStateException(
+                    "Cannot confirm payment for a ticket with status: "
+                    + registration.getPaymentStatus());
+        }
+
+        // ── Step 4: Verify Razorpay signature FIRST (security before business logic) ──
+        // This cryptographically proves the three values came from Razorpay and
+        // were not forged by the frontend. Reject immediately if invalid.
+        boolean signatureValid = razorpayService.verifySignature(
+                request.getRazorpayOrderId(),
+                request.getRazorpayPaymentId(),
+                request.getRazorpaySignature());
+
+        if (!signatureValid) {
+            log.warn("[CONFIRM-PAYMENT] Signature verification FAILED for ticket {} — possible fraud attempt!",
+                    request.getTicketReference());
+            throw new IllegalArgumentException(
+                    "Payment verification failed. The payment data is invalid or was tampered with.");
+        }
+
+        // ── Step 5: Sold-Out Race Condition Guard ──────────────────────────────
+        // Scenario: Two members both reach the payment screen (PENDING status).
+        // PENDING tickets do NOT lock seats. The first to pay gets the ticket.
+        // The second to pay must be rejected here — even though their Razorpay
+        // payment succeeded. We mark their registration FAILED.
+        // NOTE: In a real system, you would also initiate a Razorpay refund here.
+        Event event = registration.getEvent();
+        int currentlyLocked = registrationRepository.sumLockedTicketsForEvent(event.getId());
+        int remainingCapacity = event.getTotalCapacity() - currentlyLocked;
+
+        if (registration.getQuantity() > remainingCapacity) {
+            log.warn("[CONFIRM-PAYMENT] SOLD OUT race condition! ticket={}, requested={}, remaining={}",
+                    request.getTicketReference(), registration.getQuantity(), remainingCapacity);
+
+            // Mark as FAILED so this slot is permanently closed
+            registration.setPaymentStatus(PaymentStatus.FAILED);
+            registrationRepository.save(registration);
+
+            // Initiate automatic full refund — best-effort.
+            // If this call fails (network blip, Razorpay downtime), we log it loudly
+            // for manual ops follow-up. We do NOT let a refund failure crash the response
+            // because the registration is already saved as FAILED in the database.
+            try {
+                razorpayService.initiateRefund(request.getRazorpayPaymentId());
+            } catch (RazorpayException e) {
+                log.error("[CONFIRM-PAYMENT] ⚠️  REFUND FAILED — MANUAL ACTION REQUIRED! " +
+                          "paymentId={}, ticket={}, error={}",
+                          request.getRazorpayPaymentId(),
+                          request.getTicketReference(),
+                          e.getMessage());
+            }
+            throw new IllegalStateException(
+                    "We're sorry — this event just sold out while your payment was processing. "
+                    + "A full refund will be issued to your account within 5-7 business days.");
+        }
+
+        // ── Step 6: All checks passed — confirm the booking ───────────────────────
+        registration.setPaymentStatus(PaymentStatus.CONFIRMED);
+        registration.setRazorpayPaymentId(request.getRazorpayPaymentId());
+        registrationRepository.save(registration);
+
+        log.info("[CONFIRM-PAYMENT] Ticket {} CONFIRMED ✅ — paymentId={}",
+                request.getTicketReference(), request.getRazorpayPaymentId());
+
+        return buildRegistrationResponse(registration);
     }
 
 
@@ -405,5 +557,25 @@ public class RegistrationService {
             suffix.append(chars.charAt(random.nextInt(chars.length())));
         }
         return "TKT-" + Year.now().getValue() + "-" + suffix;
+    }
+
+    /**
+     * Converts a persisted Registration entity into a RegistrationResponse DTO.
+     *
+     * Shared by confirmPayment() and the future webhook handler so response
+     * shape is always identical regardless of which path confirms the ticket.
+     *
+     * Note: registration.getEvent() is a LAZY association. This method must
+     * only be called within a @Transactional context so the session is still open.
+     */
+    private RegistrationResponse buildRegistrationResponse(Registration registration) {
+        return RegistrationResponse.builder()
+                .ticketReference(registration.getTicketReference())
+                .eventTitle(registration.getEvent().getTitle())
+                .quantity(registration.getQuantity())
+                .totalAmount(registration.getTotalAmount())
+                .paymentStatus(registration.getPaymentStatus())
+                .razorpayOrderId(registration.getRazorpayOrderId())
+                .build();
     }
 }

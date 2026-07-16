@@ -721,7 +721,7 @@ POST /api/registration/initiate
 - `401 Unauthorized`: If the `sessionToken` is invalid or expired.
 - `404 Not Found`: If the `eventId` does not exist.
 - `400 Bad Request`: If capacity is exceeded, deadline passed, event is not PUBLISHED, or quantity exceeds allowed limit.
-- `409 Conflict`: If the member has already registered for this event.
+- `409 Conflict`: If the member already has a **confirmed** registration (`CONFIRMED`, `FREE`, or `PAY_AT_GATE`). Members with a `PENDING` or `FAILED` registration **are allowed to re-initiate** — their previous booking row is reused with a fresh ticket reference.
 
 ---
 
@@ -844,7 +844,125 @@ After booking is finalized (any path), the backend cleans up Redis:
 - `401 Unauthorized`: OTP expired (5-min window passed) — `"OTP has expired. Please restart the booking process."`
 - `401 Unauthorized`: Booking session expired (10-min intent window) — `"Booking session expired. Please restart the booking process."`
 - `400 Bad Request`: Event is no longer PUBLISHED or deadline has passed.
+- `400 Bad Request`: Event sold out between `/initiate` and now — `"Sorry, this event just filled up. Only X seat(s) remain."`
 - `500 Internal Server Error`: Razorpay API call failed (Path C only) — `"Payment gateway error. Please try again."`
+
+---
+
+### 4. Confirm Payment
+
+The "fast path" endpoint that finalizes an online payment. Called by the frontend immediately after the Razorpay popup closes with a success.
+
+```
+POST /api/registration/confirm-payment
+```
+
+**Access:** PUBLIC (secured internally by Razorpay cryptographic signature — no JWT required)
+
+---
+
+#### When to call this
+
+This endpoint is only relevant for **Path C (Online Payment)** from `/verify-otp`. It should be called when the Razorpay JS SDK fires its `handler` callback after a successful payment.
+
+**Do NOT call this for:**
+- `FREE` bookings — they are already confirmed by `/verify-otp`
+- `PAY_AT_GATE` bookings — staff confirms these at the venue
+
+---
+
+#### Request Body
+
+```json
+{
+  "ticketReference":  "TKT-2026-AB12CD",
+  "razorpayOrderId":  "order_PwZa8xyz...",
+  "razorpayPaymentId": "pay_Qx3Rabc...",
+  "razorpaySignature": "a3f2b9c1d4e5f6..."
+}
+```
+
+| Field | Type | Source | Required |
+|---|---|---|---|
+| `ticketReference` | String | From `/verify-otp` response | ✅ |
+| `razorpayOrderId` | String | From `/verify-otp` response | ✅ |
+| `razorpayPaymentId` | String | From Razorpay JS SDK `handler` callback | ✅ |
+| `razorpaySignature` | String | From Razorpay JS SDK `handler` callback | ✅ |
+
+**How to get `razorpayPaymentId` and `razorpaySignature` in the frontend:**
+
+The Razorpay JS SDK fires a callback when the user completes payment:
+```javascript
+handler: function (response) {
+    // These three values come directly from Razorpay — send them to our backend
+    const razorpayOrderId   = response.razorpay_order_id;
+    const razorpayPaymentId = response.razorpay_payment_id;
+    const razorpaySignature = response.razorpay_signature;
+}
+```
+
+---
+
+#### Success Response `200 OK`
+
+```json
+{
+  "ticketReference": "TKT-2026-AB12CD",
+  "eventTitle": "Summer Gala Dinner 2026",
+  "quantity": 3,
+  "totalAmount": 2000.00,
+  "paymentStatus": "CONFIRMED",
+  "razorpayOrderId": "order_PwZa8xyz..."
+}
+```
+
+→ Frontend shows the **"Booking Confirmed!"** screen with the QR code.
+
+---
+
+#### Security — Signature Verification
+
+The backend computes:
+```
+expected = HMAC_SHA256(razorpayOrderId + "|" + razorpayPaymentId, API_SECRET)
+valid    = (expected == razorpaySignature)
+```
+
+If the signature does not match, the request is rejected with `400 Bad Request`. This makes it cryptographically impossible for a bad actor to fabricate a payment confirmation.
+
+---
+
+#### Idempotency (Safe to Call Twice)
+
+If the Razorpay webhook already confirmed the ticket before this endpoint is called, this endpoint detects that (`paymentStatus == CONFIRMED`) and silently returns success — it does **not** error out. This ensures the frontend always gets a clean success response.
+
+---
+
+#### Sold-Out Race Condition
+
+Because `PENDING` tickets do not lock seats, it is theoretically possible for an event to sell out while a member is on the payment screen.
+
+If this happens:
+1. The backend marks the registration as `FAILED`.
+2. Automatically triggers a full refund via the Razorpay API (`speed: normal`).
+3. Returns `409 Conflict` with the message: `"We're sorry — this event just sold out while your payment was processing. A full refund will be issued to your account within 5-7 business days."`
+
+---
+
+#### Database Changes After This Call
+
+| Field | Before | After |
+|---|---|---|
+| `paymentStatus` | `PENDING` | `CONFIRMED` |
+| `razorpayPaymentId` | `null` | `"pay_Qx3Rabc..."` |
+
+---
+
+**Error Responses:**
+- `404 Not Found`: `ticketReference` does not exist — `"Ticket not found: TKT-2026-AB12CD"`
+- `400 Bad Request`: Signature invalid — `"Payment verification failed. The payment data is invalid or was tampered with."`
+- `409 Conflict`: Ticket is in a non-PENDING state (already CONFIRMED, FAILED, FREE, etc.) — `"Cannot confirm payment for a ticket with status: FREE"`
+- `409 Conflict`: Sold-out race condition — `"We're sorry — this event just sold out while your payment was processing..."`
 
 ---
 

@@ -1,5 +1,6 @@
 package com.eventHora.backend.controller;
 
+import com.eventHora.backend.dto.ConfirmPaymentRequest;
 import com.eventHora.backend.dto.InitiateBookingRequest;
 import com.eventHora.backend.dto.InitiateBookingResponse;
 import com.eventHora.backend.dto.RegistrationResponse;
@@ -63,6 +64,28 @@ public class RegistrationController {
     @PostMapping("/verify-otp")
     public ResponseEntity<RegistrationResponse> verifyOtp(@Valid @RequestBody VerifyOtpRequest request) {
         return ResponseEntity.ok(registrationService.verifyOtpAndBook(request));
+    }
+
+    /**
+     * POST /api/registration/confirm-payment
+     *
+     * Called by the frontend immediately after the Razorpay JS popup closes
+     * with a successful payment.
+     *
+     * The frontend sends the three values from the Razorpay JS SDK callback:
+     *   - razorpayOrderId   (from our /verify-otp response)
+     *   - razorpayPaymentId (from Razorpay JS after payment)
+     *   - razorpaySignature (from Razorpay JS after payment)
+     *
+     * The backend verifies the cryptographic signature, handles the sold-out
+     * race condition, and confirms the booking.
+     *
+     * Access: PUBLIC (secured internally by Razorpay signature verification)
+     */
+    @PostMapping("/confirm-payment")
+    public ResponseEntity<RegistrationResponse> confirmPayment(
+            @Valid @RequestBody ConfirmPaymentRequest request) {
+        return ResponseEntity.ok(registrationService.confirmPayment(request));
     }
 }
 
