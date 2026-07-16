@@ -91,7 +91,7 @@ public class Registration {
 
     // ─── Audit ────────────────────────────────────────────────────────────────
 
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false)
     private LocalDateTime bookedAt;
 
     @PrePersist
