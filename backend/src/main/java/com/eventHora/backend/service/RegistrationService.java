@@ -463,7 +463,19 @@ public class RegistrationService {
             registration.setPaymentStatus(PaymentStatus.FAILED);
             registrationRepository.save(registration);
 
-            // TODO: Trigger Razorpay refund for paymentId here in a future phase
+            // Initiate automatic full refund — best-effort.
+            // If this call fails (network blip, Razorpay downtime), we log it loudly
+            // for manual ops follow-up. We do NOT let a refund failure crash the response
+            // because the registration is already saved as FAILED in the database.
+            try {
+                razorpayService.initiateRefund(request.getRazorpayPaymentId());
+            } catch (RazorpayException e) {
+                log.error("[CONFIRM-PAYMENT] ⚠️  REFUND FAILED — MANUAL ACTION REQUIRED! " +
+                          "paymentId={}, ticket={}, error={}",
+                          request.getRazorpayPaymentId(),
+                          request.getTicketReference(),
+                          e.getMessage());
+            }
             throw new IllegalStateException(
                     "We're sorry — this event just sold out while your payment was processing. "
                     + "A full refund will be issued to your account within 5-7 business days.");

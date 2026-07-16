@@ -944,8 +944,8 @@ Because `PENDING` tickets do not lock seats, it is theoretically possible for an
 
 If this happens:
 1. The backend marks the registration as `FAILED`.
-2. Returns `409 Conflict` with the message: `"We're sorry — this event just sold out while your payment was processing. A full refund will be issued to your account within 5-7 business days."`
-3. *(In a future phase, an automatic Razorpay refund will be triggered.)*
+2. Automatically triggers a full refund via the Razorpay API (`speed: normal`).
+3. Returns `409 Conflict` with the message: `"We're sorry — this event just sold out while your payment was processing. A full refund will be issued to your account within 5-7 business days."`
 
 ---
 
