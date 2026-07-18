@@ -2,6 +2,7 @@ import Link from "next/link";
 import { MapPin, Calendar } from "lucide-react";
 import { displayStatus } from "@/lib/api";
 
+
 export type EventSummary = {
   id: string;
   title: string;
@@ -23,10 +24,12 @@ export default function EventCard({
   event,
   href,
   actionLabel,
+  showStatus,
 }: {
   event: EventSummary;
   href: string;
   actionLabel?: string;
+  showStatus?: boolean;
 }) {
   const banner =
     event.bannerUrl ||
@@ -38,12 +41,9 @@ export default function EventCard({
         <img src={banner} alt={event.title} className="h-full w-full object-cover transition-transform duration-500 hover:scale-105" />
         <div className="absolute left-3 top-3 flex gap-2">
           {event.category && <span className="rounded bg-navy px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-white">{event.category}</span>}
-          {(() => {
-            const s = displayStatus(event);
-            return s !== "PUBLISHED" ? (
-              <span className="rounded bg-gold px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-navy">{s}</span>
-            ) : null;
-          })()}
+          {showStatus && (
+            <span className="rounded bg-gold px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-navy">{displayStatus(event)}</span>
+          )}
         </div>
         {event.isSoldOut && (
           <div className="absolute right-3 top-3 rounded bg-red-600/90 px-2 py-1 text-[10px] font-bold uppercase text-white">Sold out</div>
@@ -62,17 +62,14 @@ export default function EventCard({
           {typeof event.availableCount === "number" && (
             <span>{event.availableCount}/{event.totalCapacity} seats left</span>
           )}
-          {displayStatus(event) === "COMPLETED" ? (
-            <span className="chip bg-navy/10">Completed</span>
-          ) : event.registrationOpen ? (
+          {event.registrationOpen ? (
             <span className="chip bg-green-100 text-green-800">Open</span>
           ) : (
             <span className="chip bg-navy/10">Closed</span>
           )}
         </div>
-        <div className="mt-4 flex items-center justify-between">
-          <div className="text-xs uppercase tracking-wider text-gold-600 font-semibold">View</div>
-          <Link href={href} className="btn-dark">{actionLabel || "View Details"}</Link>
+        <div className="mt-4 flex items-center justify-end">
+          <Link href={href} className="btn-dark">{actionLabel || "View"}</Link>
         </div>
       </div>
     </div>

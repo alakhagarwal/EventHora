@@ -10,9 +10,12 @@ export default function EventsPage() {
 
   useEffect(() => { api.publicEvents().then((e) => setEvents(e || [])).catch(() => {}).finally(() => setLoading(false)); }, []);
 
-  const filtered = events.filter((e) =>
-    !q || e.title?.toLowerCase().includes(q.toLowerCase()) || e.venue?.toLowerCase().includes(q.toLowerCase())
-  );
+  const filtered = events
+    .filter((e) => {
+      if (e.eventDate && new Date(e.eventDate) < new Date()) return false;
+      return !q || e.title?.toLowerCase().includes(q.toLowerCase()) || e.venue?.toLowerCase().includes(q.toLowerCase());
+    })
+    .sort((a, b) => new Date(a.eventDate || "9999-12-31").getTime() - new Date(b.eventDate || "9999-12-31").getTime());
 
   return (
     <div className="mx-auto max-w-7xl px-4 md:px-6 py-8 md:py-16">

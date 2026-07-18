@@ -1,16 +1,28 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { isLoggedIn, clearSession, clearMemberSession } from "@/lib/auth";
 import EventCard, { type EventSummary } from "@/components/EventCard";
 
 export default function Landing() {
+  const router = useRouter();
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loggedIn, setLoggedIn] = useState(false);
 
   useEffect(() => {
+    setLoggedIn(isLoggedIn());
     api.publicEvents().then((e) => setEvents(e || [])).catch(() => setEvents([])).finally(() => setLoading(false));
   }, []);
+
+  const logout = () => {
+    clearSession();
+    clearMemberSession();
+    setLoggedIn(false);
+    router.push("/");
+  };
 
   return (
     <>
@@ -40,8 +52,14 @@ export default function Landing() {
           </p>
           <div className="mt-8 md:mt-10 flex flex-col sm:flex-row flex-wrap justify-center gap-3">
             <Link href="/events" className="btn-primary">Browse Events</Link>
-            <Link href="/login" className="btn-outline bg-transparent border-white/30 text-white hover:bg-white/10">Admin / Staff Login</Link>
-            <Link href="/login" className="btn-ghost text-white hover:bg-white/10">Member Login →</Link>
+            {loggedIn ? (
+              <button onClick={logout} className="btn-outline bg-transparent border-white/30 text-white hover:bg-white/10">Logout</button>
+            ) : (
+              <>
+                <Link href="/login" className="btn-outline bg-transparent border-white/30 text-white hover:bg-white/10">Admin / Staff Login</Link>
+                <Link href="/login" className="btn-ghost text-white hover:bg-white/10">Member Login →</Link>
+              </>
+            )}
           </div>
           <div className="mt-10 md:mt-14 grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 max-w-3xl mx-auto">
             {[
@@ -74,7 +92,7 @@ export default function Landing() {
           <div className="card p-10 text-center text-navy/60">No published events yet.</div>
         ) : (
           <div className="grid gap-4 md:gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {events.slice(0, 6).map((e) => (
+            {events.filter((e) => !e.eventDate || new Date(e.eventDate) >= new Date()).slice(0, 6).map((e) => (
               <EventCard key={e.id} event={e} href={`/events/${e.uniqueEventLink}`} actionLabel="Book Now" />
             ))}
           </div>

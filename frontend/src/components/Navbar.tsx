@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { clearSession, getSession, type Session } from "@/lib/auth";
+import { clearSession, clearMemberSession, getSession, getMemberSession, type Session } from "@/lib/auth";
 
 /* ── Drawer link icons (small inline SVGs) ── */
 const icons = {
@@ -52,11 +52,12 @@ const icons = {
 
 export default function Navbar() {
   const [session, setSession] = useState<Session>(null);
+  const [memberSession, setMemberSession] = useState<ReturnType<typeof getMemberSession>>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
 
-  useEffect(() => { setSession(getSession()); }, [pathname]);
+  useEffect(() => { setSession(getSession()); setMemberSession(getMemberSession()); }, [pathname]);
   // Close drawer on route change
   useEffect(() => { setDrawerOpen(false); }, [pathname]);
   // Lock body scroll when drawer is open
@@ -69,7 +70,7 @@ export default function Navbar() {
     return () => { document.body.style.overflow = ""; };
   }, [drawerOpen]);
 
-  const logout = () => { clearSession(); setSession(null); setDrawerOpen(false); router.push("/"); };
+  const logout = () => { clearSession(); clearMemberSession(); setSession(null); setMemberSession(null); setDrawerOpen(false); router.push("/"); };
 
   const linkCls = (href: string) =>
     `text-sm font-medium transition-colors ${pathname === href ? "text-gold" : "text-white/80 hover:text-white"}`;
@@ -77,8 +78,12 @@ export default function Navbar() {
   const drawerLinkCls = (href: string) =>
     `drawer-link ${pathname === href || (href !== "/" && pathname.startsWith(href)) ? "drawer-link--active" : ""}`;
 
-  const initials = session?.name
-    ? session.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)
+  const is_logged_in = !!session || !!memberSession;
+  const display_name = session?.name || memberSession?.memberId || null;
+  const display_role = session?.role || (memberSession ? "Member" : null);
+
+  const initials = display_name
+    ? display_name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)
     : "?";
 
   return (
@@ -113,19 +118,19 @@ export default function Navbar() {
                 <Link href="/admin/users" className={linkCls("/admin/users")}>Users</Link>
               </>
             )}
-            {session && <Link href="/profile" className={linkCls("/profile")}>Profile</Link>}
+            {is_logged_in && <Link href="/profile" className={linkCls("/profile")}>Profile</Link>}
           </nav>
 
           {/* Right: auth buttons */}
           <div className="flex items-center gap-3">
-            {!session ? (
+            {!is_logged_in ? (
               <>
                 <Link href="/login" className="hidden md:inline text-sm text-white/80 hover:text-white">Sign In</Link>
                 <Link href="/login" className="btn-primary text-xs md:text-sm">Get Started</Link>
               </>
             ) : (
               <>
-                <span className="hidden md:inline text-xs text-white/60">{session.name} · {session.role}</span>
+                <span className="hidden md:inline text-xs text-white/60">{display_name} · {display_role}</span>
                 <button onClick={logout} className="btn-primary text-xs md:text-sm">Logout</button>
               </>
             )}
@@ -143,10 +148,10 @@ export default function Navbar() {
           <div className="drawer-panel md:hidden">
             {/* Drawer header */}
             <div className="drawer-header">
-              <div className="drawer-avatar">{session ? initials : "?"}</div>
+              <div className="drawer-avatar">{is_logged_in ? initials : "?"}</div>
               <div>
-                <div className="drawer-user-name">{session ? session.name : "Guest"}</div>
-                <div className="drawer-user-role">{session ? session.role : "Not signed in"}</div>
+                <div className="drawer-user-name">{is_logged_in ? display_name : "Guest"}</div>
+                <div className="drawer-user-role">{is_logged_in ? display_role : "Not signed in"}</div>
               </div>
             </div>
 
@@ -174,7 +179,7 @@ export default function Navbar() {
                 </>
               )}
 
-              {session && (
+              {is_logged_in && (
                 <>
                   <div className="drawer-divider" />
                   <Link href="/profile" className={drawerLinkCls("/profile")} onClick={() => setDrawerOpen(false)}>
@@ -185,14 +190,14 @@ export default function Navbar() {
             </nav>
 
             {/* Drawer footer */}
-            {session && (
+            {is_logged_in && (
               <div className="drawer-footer">
                 <button onClick={logout} className="drawer-logout-btn">
                   {icons.logout} Sign Out
                 </button>
               </div>
             )}
-            {!session && (
+            {!is_logged_in && (
               <div className="drawer-footer">
                 <Link href="/login" className="drawer-logout-btn" onClick={() => setDrawerOpen(false)}>
                   Sign In / Get Started

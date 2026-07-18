@@ -16,14 +16,18 @@ export default function AllAdminEvents() {
     api.adminEvents().then(setEvents).catch(() => {});
   }, [router]);
 
-  const filtered = events.filter((e) => !q || e.title?.toLowerCase().includes(q.toLowerCase()));
+  const now = new Date();
+  const past = events
+    .filter((e) => e.eventDate && new Date(e.eventDate) < now)
+    .sort((a, b) => new Date(b.eventDate!).getTime() - new Date(a.eventDate!).getTime());
+  const filtered = past.filter((e) => !q || e.title?.toLowerCase().includes(q.toLowerCase()));
 
   return (
     <div className="mx-auto max-w-7xl px-4 md:px-6 py-8 md:py-12">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-6 md:mb-8 gap-4">
         <div>
           <div className="eyebrow">Admin</div>
-          <h1 className="h1 mt-2">All Events</h1>
+          <h1 className="h1 mt-2">Past Events</h1>
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
           <input className="input" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -34,7 +38,11 @@ export default function AllAdminEvents() {
         </div>
       </div>
       <div className="grid gap-4 md:gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {filtered.map((e) => <EventCard key={e.id} event={e} href={`/admin/events/${e.id}`} actionLabel="Edit" />)}
+        {filtered.length === 0 ? (
+          <div className="col-span-full card p-10 text-center text-navy/60">No past events yet.</div>
+        ) : (
+          filtered.map((e) => <EventCard key={e.id} event={e} href={`/admin/events/${e.id}`} actionLabel="Edit" showStatus />)
+        )}
       </div>
     </div>
   );

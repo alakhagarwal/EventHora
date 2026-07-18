@@ -44,7 +44,7 @@ export default function MyEvents() {
         <div className="card p-10 text-center text-navy/60">No events in this status.</div>
       ) : (
         <div className="grid gap-4 md:gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((e) => <EventCard key={e.id} event={e} href={`/admin/events/${e.id}`} actionLabel="Edit" />)}
+          {filtered.map((e) => <EventCard key={e.id} event={e} href={`/admin/events/${e.id}`} actionLabel="Edit" showStatus />)}
         </div>
       )}
     </div>

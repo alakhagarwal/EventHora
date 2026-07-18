@@ -3,6 +3,15 @@ export const API_BASE =
 
 type Options = RequestInit & { auth?: boolean; json?: any };
 
+export type RegistrationResponse = {
+  ticketReference: string;
+  eventTitle: string;
+  quantity: number;
+  totalAmount: string;
+  paymentStatus: "FREE" | "COMPLIMENTARY" | "PAY_AT_GATE" | "PENDING" | "CONFIRMED";
+  razorpayOrderId?: string;
+};
+
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("accessToken");
@@ -87,4 +96,15 @@ export const api = {
     quantity: number;
     paymentPreference: "ONLINE" | "AT_GATE";
   }) => apiFetch("/api/registration/initiate", { method: "POST", json: body, auth: false }),
+
+  verifyOtp: (body: { sessionToken: string; otp: string }) =>
+    apiFetch<RegistrationResponse>("/api/registration/verify-otp", { method: "POST", json: body, auth: false }),
+
+  confirmPayment: (body: {
+    ticketReference: string;
+    razorpayOrderId: string;
+    razorpayPaymentId: string;
+    razorpaySignature: string;
+  }) =>
+    apiFetch<RegistrationResponse>("/api/registration/confirm-payment", { method: "POST", json: body, auth: false }),
 };
