@@ -37,7 +37,23 @@ export default function BookEventPage() {
       });
       localStorage.setItem(
         "bookingCtx",
-        JSON.stringify({ ...res, sessionToken: sess.sessionToken, eventId: ev.id, quantity, pay, startedAt: Date.now() })
+        JSON.stringify({
+          ...res,
+          sessionToken: sess.sessionToken,
+          eventId: ev.id,
+          quantity,
+          pay,
+          startedAt: Date.now(),
+          // Add these from the already-fetched `ev` object:
+          eventTitle: ev.title,
+          venue: ev.venue,
+          additionalVenueInfo: ev.additionalVenueInfo || null,
+          eventDate: ev.eventDate,
+          startTime: ev.startTime,
+          endTime: ev.endTime,
+          contactPersonName: ev.contactPersonName || null,
+          contactPersonPhone: ev.contactPersonPhone || null,
+        })
       );
       router.push("/member/otp");
     } catch (e: any) {

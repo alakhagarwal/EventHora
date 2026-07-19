@@ -44,13 +44,23 @@ export default function OtpPage() {
 
       const result: RegistrationResponse = await api.verifyOtp({ sessionToken, otp });
 
+      const enriched = {
+        ...result,
+        eventTitle: result.eventTitle || bookingCtx.eventTitle || "",
+        venue: bookingCtx.venue || "",
+        additionalVenueInfo: bookingCtx.additionalVenueInfo || null,
+        eventDate: bookingCtx.eventDate || "",
+        startTime: bookingCtx.startTime || "",
+        endTime: bookingCtx.endTime || "",
+        contactPersonName: bookingCtx.contactPersonName || null,
+        contactPersonPhone: bookingCtx.contactPersonPhone || null,
+      };
+
       if (result.paymentStatus === "FREE" || result.paymentStatus === "COMPLIMENTARY") {
-        // Free booking — go straight to thank-you
-        sessionStorage.setItem("bookingResult", JSON.stringify(result));
+        sessionStorage.setItem("bookingResult", JSON.stringify(enriched));
         router.push("/success/thanku");
       } else if (result.paymentStatus === "PAY_AT_GATE") {
-        // Pay at venue — go to thank-you with that flag
-        sessionStorage.setItem("bookingResult", JSON.stringify(result));
+        sessionStorage.setItem("bookingResult", JSON.stringify(enriched));
         router.push("/success/thanku");
       } else if (result.paymentStatus === "PENDING") {
         // Open Razorpay checkout
@@ -69,7 +79,16 @@ export default function OtpPage() {
                 razorpayPaymentId: response.razorpay_payment_id,
                 razorpaySignature: response.razorpay_signature,
               });
-              sessionStorage.setItem("bookingResult", JSON.stringify(confirmed));
+              sessionStorage.setItem("bookingResult", JSON.stringify({
+                ...confirmed,
+                venue: bookingCtx.venue || "",
+                additionalVenueInfo: bookingCtx.additionalVenueInfo || null,
+                eventDate: bookingCtx.eventDate || "",
+                startTime: bookingCtx.startTime || "",
+                endTime: bookingCtx.endTime || "",
+                contactPersonName: bookingCtx.contactPersonName || null,
+                contactPersonPhone: bookingCtx.contactPersonPhone || null,
+              }));
               router.push("/success/thanku");
             } catch (err: any) {
               setError(err?.message || "Payment confirmation failed.");
