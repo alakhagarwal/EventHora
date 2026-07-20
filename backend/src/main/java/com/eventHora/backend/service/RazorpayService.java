@@ -43,6 +43,11 @@ public class RazorpayService {
     @Value("${razorpay.api.secret}")
     private String keySecret;
 
+    // Webhook secret is DIFFERENT from the API secret.
+    // It is set when you create the webhook in the Razorpay dashboard.
+    @Value("${razorpay.webhook.secret}")
+    private String webhookSecret;
+
     // ─── Order Creation ────────────────────────────────────────────────────────
 
     /**
@@ -139,6 +144,53 @@ public class RazorpayService {
         } catch (NoSuchAlgorithmException | InvalidKeyException e) {
             // This should never happen in a correctly configured JVM
             log.error("[RAZORPAY] Signature verification failed due to crypto error: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    // ─── Webhook Signature Verification ───────────────────────────────────────
+
+    /**
+     * Verifies the signature Razorpay attaches to every webhook POST request.
+     *
+     * HOW THIS DIFFERS FROM verifySignature():
+     *   - verifySignature()        → used for frontend payment callbacks.
+     *                                Signs: razorpayOrderId + "|" + razorpayPaymentId
+     *                                Uses:  the API secret (keySecret)
+     *
+     *   - verifyWebhookSignature() → used for server-to-server Razorpay webhook calls.
+     *                                Signs: the ENTIRE raw request body (JSON string)
+     *                                Uses:  a SEPARATE webhook secret (webhookSecret)
+     *
+     * Razorpay sends the computed signature in the HTTP header: X-Razorpay-Signature
+     *
+     * @param rawBody   The raw JSON string of the entire webhook request body.
+     *                  IMPORTANT: Must be the raw bytes as received, NOT re-serialized.
+     * @param signature The value of the X-Razorpay-Signature header.
+     * @return          true if the signature matches (webhook is genuine), false otherwise.
+     */
+    public boolean verifyWebhookSignature(String rawBody, String signature) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKeySpec = new SecretKeySpec(
+                    webhookSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+            mac.init(secretKeySpec);
+
+            byte[] hash = mac.doFinal(rawBody.getBytes(StandardCharsets.UTF_8));
+            String expectedSignature = HexFormat.of().formatHex(hash);
+
+            boolean isValid = expectedSignature.equals(signature);
+
+            if (isValid) {
+                log.info("[RAZORPAY] Webhook signature verified ✅");
+            } else {
+                log.warn("[RAZORPAY] Webhook signature MISMATCH ❌ — possible spoofed request!");
+            }
+
+            return isValid;
+
+        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            log.error("[RAZORPAY] Webhook signature verification failed due to crypto error: {}", e.getMessage());
             return false;
         }
     }

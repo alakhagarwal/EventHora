@@ -961,8 +961,140 @@ If this happens:
 **Error Responses:**
 - `404 Not Found`: `ticketReference` does not exist — `"Ticket not found: TKT-2026-AB12CD"`
 - `400 Bad Request`: Signature invalid — `"Payment verification failed. The payment data is invalid or was tampered with."`
-- `409 Conflict`: Ticket is in a non-PENDING state (already CONFIRMED, FAILED, FREE, etc.) — `"Cannot confirm payment for a ticket with status: FREE"`
+- `409 Conflict`: Ticket is `FREE` or `PAY_AT_GATE` — those are not online payments, this endpoint does not apply — `"Cannot confirm payment for a ticket with status: FREE"`
 - `409 Conflict`: Sold-out race condition — `"We're sorry — this event just sold out while your payment was processing..."`
+
+> **Note on `FAILED` status:** If a `payment.failed` webhook arrived before this call (e.g. the user's first UPI attempt failed but they retried with a credit card on the same Razorpay order), the registration may be in `FAILED` state. This endpoint **does not reject** `FAILED` status — it allows the request through and lets the Razorpay signature verify whether the payment is genuinely successful.
 
 ---
 
+
+## Registration Endpoints — Webhook
+
+### 5. Razorpay Webhook
+
+Server-to-server event notifications from Razorpay. This is the **safety net** for the entire payment flow — it fires regardless of what the user's browser does.
+
+```
+POST /api/webhooks/razorpay
+```
+
+**Access:** Called by Razorpay servers only. Secured by HMAC-SHA256 signature verification on every request.
+
+---
+
+#### Why This Exists
+
+The normal flow after payment is:
+```
+User pays → Razorpay popup closes → Frontend calls /confirm-payment → Ticket confirmed
+```
+
+But if the user's browser crashes, their internet drops, or they close the tab the instant payment succeeds, `/confirm-payment` is never called. The ticket stays `PENDING` forever even though money was taken.
+
+Razorpay's server-to-server webhook fires **regardless of the frontend**. This endpoint catches those orphaned payments and confirms the ticket automatically.
+
+---
+
+#### Request
+
+Razorpay sends a raw JSON body with a signature header:
+
+```
+Content-Type: application/json
+X-Razorpay-Signature: a3f2b9c1d4e5f6...
+```
+
+Example body for `payment.captured`:
+```json
+{
+  "event": "payment.captured",
+  "payload": {
+    "payment": {
+      "entity": {
+        "id": "pay_Qx3Rabc...",
+        "order_id": "order_PwZa8xyz...",
+        "status": "captured"
+      }
+    }
+  }
+}
+```
+
+---
+
+#### Signature Verification
+
+Before processing any event, the backend verifies the request is genuinely from Razorpay:
+```
+expected = HMAC-SHA256(entire raw request body, RAZORPAY_WEBHOOK_SECRET)
+valid    = (expected == X-Razorpay-Signature header)
+```
+
+This uses a **separate webhook secret** (not the API key secret). It is configured in the Razorpay dashboard when you create the webhook.
+
+If the signature does not match, the request is silently ignored and `200 OK` is still returned.
+
+---
+
+#### Events Handled
+
+| Event | Trigger | Action |
+|---|---|---|
+| `payment.captured` | User's payment succeeded | Marks registration `CONFIRMED`. Applies sold-out guard; refunds automatically if sold out. |
+| `payment.failed` | User's card/UPI was declined | Marks registration `FAILED` — member can retry immediately. |
+| Any other event | Settlements, disputes, etc. | Logged and ignored. |
+
+---
+
+#### Retry-After-Failure on Same Razorpay Order
+
+Razorpay allows the user to try multiple payment methods within the same popup (same `order_id`). For example:
+
+1. User tries UPI → fails → `payment.failed` webhook → registration marked `FAILED`
+2. User tries credit card (same popup, same `order_id`) → succeeds
+3. `payment.captured` webhook fires → finds registration by `order_id` → status is `FAILED` (not `CONFIRMED`) → proceeds to confirm ✅
+4. Ticket marked `CONFIRMED`
+
+The same scenario works via `/confirm-payment` too — that endpoint also accepts `FAILED` status since the Razorpay signature cryptographically proves the payment is genuine.
+
+---
+
+#### Idempotency
+
+Razorpay retries webhooks if it does not receive `200 OK` quickly. Every handler checks the current state before acting:
+
+| Webhook event | Current status | Action |
+|---|---|---|
+| `payment.captured` | `PENDING` or `FAILED` | Confirm ticket ✅ |
+| `payment.captured` | `CONFIRMED` | Skip — already confirmed (idempotent) |
+| `payment.failed` | `PENDING` | Mark FAILED ✅ |
+| `payment.failed` | `FAILED` | Skip — already failed (idempotent) |
+| `payment.failed` | `CONFIRMED` | Skip — **never downgrade a confirmed ticket** |
+
+---
+
+#### Response
+
+This endpoint **always** returns `200 OK` with body `"ok"`, even on internal errors or invalid signatures. This is intentional:
+- Returning `4xx`/`5xx` causes Razorpay to retry for up to 24 hours, risking duplicate processing.
+- Attackers get no feedback about why a spoofed request was rejected.
+
+---
+
+#### Database Changes
+
+**On `payment.captured` (success path):**
+
+| Field | Before | After |
+|---|---|---|
+| `paymentStatus` | `PENDING` or `FAILED` | `CONFIRMED` |
+| `razorpayPaymentId` | `null` | `"pay_Qx3Rabc..."` |
+
+**On `payment.failed`:**
+
+| Field | Before | After |
+|---|---|---|
+| `paymentStatus` | `PENDING` | `FAILED` |
+
+---

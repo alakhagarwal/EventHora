@@ -420,11 +420,18 @@ public class RegistrationService {
             return buildRegistrationResponse(registration);
         }
 
-        // ── Step 3: Reject terminal states ───────────────────────────────────────
-        // FAILED means Razorpay already reported a failed/expired payment.
-        // Any other non-PENDING status (FREE, PAY_AT_GATE) means this was not
-        // an online payment — confirm-payment should not be called for those.
-        if (registration.getPaymentStatus() != PaymentStatus.PENDING) {
+        // ── Step 3: Reject truly terminal states ─────────────────────────────────
+        // CONFIRMED is handled above (idempotency).
+        // FREE / PAY_AT_GATE were never online payments — /confirm-payment is irrelevant for them.
+        //
+        // FAILED is intentionally allowed through here.
+        // Razorpay allows the user to retry a failed payment attempt on the SAME Razorpay order
+        // (e.g. first try UPI → fails → try credit card → succeeds, all same order_id).
+        // In that window, a payment.failed webhook may have already flipped our status to FAILED.
+        // We must NOT block the subsequent success. The signature check in Step 4 below
+        // cryptographically proves this is a genuine payment from Razorpay.
+        if (registration.getPaymentStatus() == PaymentStatus.FREE
+                || registration.getPaymentStatus() == PaymentStatus.PAY_AT_GATE) {
             throw new IllegalStateException(
                     "Cannot confirm payment for a ticket with status: "
                     + registration.getPaymentStatus());
@@ -490,6 +497,160 @@ public class RegistrationService {
                 request.getTicketReference(), request.getRazorpayPaymentId());
 
         return buildRegistrationResponse(registration);
+    }
+
+
+    // ─── Webhook Handler ──────────────────────────────────────────────────────
+
+    /**
+     * Handles an incoming verified Razorpay webhook event.
+     *
+     * WHY THIS EXISTS — The "Safety Net":
+     *   The happy path is: user pays → Razorpay popup → frontend calls /confirm-payment.
+     *   But what if the user's browser crashes, they lose internet, or they close the
+     *   tab the instant payment succeeds? /confirm-payment is never called.
+     *   Razorpay's server-to-server webhook fires regardless of the frontend. This
+     *   method catches those "orphaned" payments and confirms the ticket automatically.
+     *
+     * IDEMPOTENCY:
+     *   The webhook may be retried by Razorpay if we don't respond with 200 quickly.
+     *   This method checks if the registration is already CONFIRMED before doing
+     *   anything, so double-processing the same event is completely harmless.
+     *
+     * EVENTS WE HANDLE:
+     *   - "payment.captured" → mark PENDING registration as CONFIRMED
+     *   - "payment.failed"   → mark PENDING registration as FAILED
+     *   - anything else      → log and ignore (200 OK is still returned to Razorpay
+     *                          so it stops retrying events we don't care about)
+     *
+     * @param rawBody   The raw JSON webhook payload (already signature-verified by controller)
+     */
+    @Transactional
+    public void handleRazorpayWebhook(String rawBody) {
+        try {
+            // Parse the raw payload into a JSON tree
+            com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(rawBody);
+            String eventType = root.path("event").asText();
+
+            log.info("[WEBHOOK] Received Razorpay event: {}", eventType);
+
+            switch (eventType) {
+                case "payment.captured" -> handlePaymentCaptured(root);
+                case "payment.failed"   -> handlePaymentFailed(root);
+                default -> log.info("[WEBHOOK] Ignoring unhandled event type: {}", eventType);
+            }
+
+        } catch (Exception e) {
+            // We log the error but do NOT rethrow — the controller must still
+            // return 200 OK to Razorpay. If we return 4xx/5xx, Razorpay retries
+            // for 24 hours, which can cause duplicate processing.
+            log.error("[WEBHOOK] Failed to process webhook payload: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * payment.captured — The user's payment was captured successfully by Razorpay.
+     * We confirm their ticket, applying the same sold-out guard as /confirm-payment.
+     */
+    private void handlePaymentCaptured(com.fasterxml.jackson.databind.JsonNode root) {
+        // Navigate the Razorpay webhook payload structure:
+        // root → payload → payment → entity → { id, order_id, ... }
+        com.fasterxml.jackson.databind.JsonNode paymentEntity =
+                root.path("payload").path("payment").path("entity");
+
+        String razorpayPaymentId = paymentEntity.path("id").asText();
+        String razorpayOrderId   = paymentEntity.path("order_id").asText();
+
+        log.info("[WEBHOOK] payment.captured — orderId={}, paymentId={}", razorpayOrderId, razorpayPaymentId);
+
+        // Find the registration by Razorpay order ID
+        Registration registration = registrationRepository.findByRazorpayOrderId(razorpayOrderId)
+                .orElse(null);
+
+        if (registration == null) {
+            log.warn("[WEBHOOK] No registration found for orderId={} — possibly already cleaned up or invalid.", razorpayOrderId);
+            return;
+        }
+
+        // Idempotency: if already confirmed (e.g. frontend already called /confirm-payment), do nothing
+        if (registration.getPaymentStatus() == PaymentStatus.CONFIRMED) {
+            log.info("[WEBHOOK] Ticket {} already CONFIRMED — skipping (idempotent).", registration.getTicketReference());
+            return;
+        }
+
+        // Capacity guard — same as in confirmPayment()
+        // PENDING tickets don't lock seats, so the event may have sold out
+        // while this payment was in-flight.
+        Event event = registration.getEvent();
+        int locked    = registrationRepository.sumLockedTicketsForEvent(event.getId());
+        int remaining = event.getTotalCapacity() - locked;
+
+        if (registration.getQuantity() > remaining) {
+            log.warn("[WEBHOOK] SOLD OUT race — ticket={}, requested={}, remaining={}",
+                    registration.getTicketReference(), registration.getQuantity(), remaining);
+
+            registration.setPaymentStatus(PaymentStatus.FAILED);
+            registrationRepository.save(registration);
+
+            // Initiate automatic refund — best-effort
+            try {
+                razorpayService.initiateRefund(razorpayPaymentId);
+            } catch (com.razorpay.RazorpayException e) {
+                log.error("[WEBHOOK] ⚠️  REFUND FAILED — MANUAL ACTION REQUIRED! " +
+                          "paymentId={}, ticket={}, error={}",
+                          razorpayPaymentId, registration.getTicketReference(), e.getMessage());
+            }
+            return;
+        }
+
+        // All checks passed — confirm the booking
+        registration.setPaymentStatus(PaymentStatus.CONFIRMED);
+        registration.setRazorpayPaymentId(razorpayPaymentId);
+        registrationRepository.save(registration);
+
+        log.info("[WEBHOOK] Ticket {} CONFIRMED ✅ via webhook — paymentId={}",
+                registration.getTicketReference(), razorpayPaymentId);
+    }
+
+    /**
+     * payment.failed — The user's payment failed on Razorpay's side (card declined,
+     * net banking timeout, UPI failure, etc.). Mark the registration as FAILED so
+     * the member can immediately retry without being blocked.
+     */
+    private void handlePaymentFailed(com.fasterxml.jackson.databind.JsonNode root) {
+        com.fasterxml.jackson.databind.JsonNode paymentEntity =
+                root.path("payload").path("payment").path("entity");
+
+        String razorpayOrderId = paymentEntity.path("order_id").asText();
+        String errorDescription = paymentEntity.path("error_description").asText("unknown reason");
+
+        log.info("[WEBHOOK] payment.failed — orderId={}, reason={}", razorpayOrderId, errorDescription);
+
+        Registration registration = registrationRepository.findByRazorpayOrderId(razorpayOrderId)
+                .orElse(null);
+
+        if (registration == null) {
+            log.warn("[WEBHOOK] No registration found for orderId={}", razorpayOrderId);
+            return;
+        }
+
+        // Guard: only act on PENDING status.
+        // FAILED   → idempotent (already failed, skip)
+        // CONFIRMED → do NOT downgrade a confirmed ticket. A delayed or duplicate
+        //             payment.failed webhook for the same order_id must never overwrite
+        //             a ticket that was successfully confirmed by a subsequent payment
+        //             attempt or by /confirm-payment.
+        // FREE / PAY_AT_GATE → should never receive this webhook, but guard anyway.
+        if (registration.getPaymentStatus() != PaymentStatus.PENDING) {
+            log.info("[WEBHOOK] Ticket {} is in status {} — skipping payment.failed (idempotent or already terminal).",
+                    registration.getTicketReference(), registration.getPaymentStatus());
+            return;
+        }
+
+        registration.setPaymentStatus(PaymentStatus.FAILED);
+        registrationRepository.save(registration);
+
+        log.info("[WEBHOOK] Ticket {} marked FAILED via webhook — member can retry.", registration.getTicketReference());
     }
 
 
