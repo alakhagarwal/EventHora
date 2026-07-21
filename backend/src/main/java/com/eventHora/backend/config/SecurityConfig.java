@@ -36,7 +36,8 @@ public class SecurityConfig {
     /** Public routes — no JWT required */
     private static final String[] PUBLIC_URLS = {
             "/api/auth/login",
-            "/api/registration/**"
+            "/api/registration/**",
+            "/api/webhooks/**"   // Razorpay posts here — secured by HMAC-SHA256 signature, not JWT
     };
 
     @Bean
