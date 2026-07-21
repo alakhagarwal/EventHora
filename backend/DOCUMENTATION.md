@@ -368,8 +368,8 @@ src/main/java/com/eventHora/backend/
 
 ## Event Management API
 
-> **Access:** All event management endpoints require ADMIN role.
-> Add `Authorization: Bearer <admin-token>` to every request.
+> **Access:** Most event management endpoints require ADMIN role. Read-only dashboard endpoints are also accessible to STAFF.
+> Add `Authorization: Bearer <token>` to every request.
 
 ### Event Status Lifecycle
 
@@ -510,13 +510,15 @@ No request body needed.
 
 ---
 
-### 5. List All Events (Admin Dashboard)
+### 5. List All Events (Admin & Staff Dashboard)
 
 Returns a summary list of all events in the system, ordered by event date (newest first). Includes events of all statuses.
 
 ```
 GET /api/admin/events
 ```
+
+**Access:** ADMIN, STAFF
 
 **Success Response `200 OK`:**
 ```json
@@ -542,13 +544,15 @@ GET /api/admin/events
 
 ---
 
-### 6. Get Single Event (Admin Detail View)
+### 6. Get Single Event (Admin & Staff Detail View)
 
 Returns the **full details** of a single event regardless of its status (DRAFT, PUBLISHED, CANCELLED). Use this before making a `PATCH` update call so you can see the current values of every field.
 
 ```
 GET /api/admin/events/{id}
 ```
+
+**Access:** ADMIN, STAFF
 
 No request body needed.
 
@@ -648,9 +652,246 @@ If the slug doesn't exist or the event is in `DRAFT`/`CANCELLED` status.
 
 ---
 
+## Staff Operations API
+
+> **Access:** All endpoints in this section require a valid JWT with `STAFF` or `ADMIN` role.
+> Add `Authorization: Bearer <token>` to every request.
+
+These endpoints are designed for use on event day — typically by a STAFF member on their phone or tablet at the entry gate.
+
+---
+
+### Event Day Gate Application Flow (Frontend Guide)
+
+For developers building the gate scanner application, here is the expected step-by-step UI flow for every possible scenario when staff scans a ticket.
+
+#### Scenario A: Member has already paid (or it's a free event)
+**Status:** `CONFIRMED`, `FREE`, or `COMPLIMENTARY`
+1. Staff opens the scanner app and scans the member's QR code.
+2. App calls `POST /api/staff/checkin`.
+3. Backend returns `200 OK` (with `alreadyCheckedIn: false`).
+4. **UI Action:** Show a **Green Success Screen** with the member's ID and quantity of tickets. Admittance complete.
+
+#### Scenario B: Member chose Pay-at-Gate
+**Status:** `PAY_AT_GATE`
+1. Staff scans the member's QR code.
+2. App calls `POST /api/staff/checkin`.
+3. Backend rejects the check-in and returns `409 Conflict` (Message: *"Payment collection required before entry..."*).
+4. **UI Action:** App catches the `409` and automatically transitions to a **Payment Collection Screen** showing the total amount due.
+5. Staff collects cash from the member and taps "Confirm Payment" in the app.
+6. App calls `POST /api/staff/record-payment` with action `"PAID"`.
+7. Backend returns `200 OK` (recording payment and check-in atomically).
+8. **UI Action:** Show the **Green Success Screen**. Admittance complete.
+
+#### Scenario C: Member abandoned online payment
+**Status:** `PENDING`
+1. Staff scans the member's QR code.
+2. App calls `POST /api/staff/checkin`.
+3. Backend returns `409 Conflict` (Message: *"This ticket has an incomplete online payment..."*).
+4. **UI Action:** Show a **Red Error Screen** with the backend message. Staff instructs the member to step aside and make a fresh Pay-at-Gate booking on their phone (if seats remain).
+
+#### Scenario D: Accidental Double-Scan
+**Status:** Any valid status, but already checked in
+1. Staff accidentally scans a QR code that was already scanned a few minutes ago.
+2. App calls `POST /api/staff/checkin`.
+3. Backend returns `200 OK` but with the flag `alreadyCheckedIn: true`.
+4. **UI Action:** Show a **Yellow Warning Screen** ("⚠️ Already checked in"). Staff visually verifies if this is the same person who just walked in, or someone trying to share their ticket.
+
+---
+
+### 1. QR Code Gate Check-In
+
+Scans a member's QR ticket at the event gate and records their entry.
+
+```
+POST /api/staff/checkin
+```
+
+**Access:** STAFF, ADMIN
+
+**Request Body** (`application/json`):
+```json
+{
+  "ticketReference": "TKT-2026-AB12CD"
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `ticketReference` | String | ✅ | Embedded in the member's QR code |
+
+---
+
+#### Success Response `200 OK` — First-time scan
+
+```json
+{
+  "ticketReference": "TKT-2026-AB12CD",
+  "memberId": "RIC-2024-04512",
+  "eventTitle": "Mere Mehboob Na Ja…",
+  "quantity": 2,
+  "totalAmount": 2000.00,
+  "paymentStatus": "CONFIRMED",
+  "alreadyCheckedIn": false,
+  "checkedInAt": "2026-07-08T18:35:22",
+  "message": "✅ Check-in successful"
+}
+```
+
+The staff member's screen should display a **green confirmation** with the member's ID, event name, and number of tickets (people) admitted.
+
+---
+
+#### Success Response `200 OK` — Duplicate scan ⚠️
+
+If the same QR code is scanned a second time (accidental re-scan), the endpoint still returns `200 OK` but with `alreadyCheckedIn: true`:
+
+```json
+{
+  "ticketReference": "TKT-2026-AB12CD",
+  "memberId": "RIC-2024-04512",
+  "eventTitle": "Mere Mehboob Na Ja…",
+  "quantity": 2,
+  "totalAmount": 2000.00,
+  "paymentStatus": "CONFIRMED",
+  "alreadyCheckedIn": true,
+  "checkedInAt": "2026-07-08T18:35:22",
+  "message": "⚠️ Already checked in at 2026-07-08T18:35:22"
+}
+```
+
+> **Why `200` and not an error?** Accidental double-scans are common (busy gates, QR re-shown on phone). A `409` would crash many frontend implementations and create confusion. Instead, the response carries the `alreadyCheckedIn` flag so the UI can show a distinct **yellow warning screen** vs. the green success screen.
+>
+> The `checkedInAt` timestamp preserves the **original** check-in time — it is never overwritten.
+
+---
+
+#### Error Responses
+
+| HTTP | Scenario | Message |
+|---|---|---|
+| `404 Not Found` | Ticket reference doesn't exist | `"Ticket not found: TKT-2026-XXXXXX"` |
+| `409 Conflict` | Payment is `PENDING` (online payment incomplete) | `"This ticket has an incomplete online payment. Please ask the member to make a new Pay-at-Gate booking if seats are still available."` |
+| `409 Conflict` | Payment is `FAILED` | `"This ticket's payment failed. The member does not have a valid booking."` |
+| `401 Unauthorized` | JWT missing or expired | Standard auth error |
+| `403 Forbidden` | Insufficient role | Standard RBAC error |
+
+---
+
+#### Valid Statuses for Entry
+
+| Payment Status | Admitted? | Notes |
+|---|---|---|
+| `CONFIRMED` | ✅ Yes | Online payment was successful |
+| `FREE` | ✅ Yes | Free event or complimentary booking |
+| `COMPLIMENTARY` | ✅ Yes | Fee waived by staff |
+| `PAY_AT_GATE` | ➡️ Redirect | Use `POST /api/staff/record-payment` to collect payment and check in atomically |
+| `PENDING` | ❌ No | Online payment started but not completed |
+| `FAILED` | ❌ No | Payment attempt failed |
+
+---
+
+#### Database Change on Check-In
+
+| Field | Before | After |
+|---|---|---|
+| `isCheckedIn` | `false` | `true` |
+| `checkedInAt` | `null` | Current timestamp |
+
+---
+
+### 2. Record Gate Payment (PAY_AT_GATE tickets)
+
+Records cash or complimentary collection for a `PAY_AT_GATE` ticket.
+
+This is the **only way to admit a PAY_AT_GATE member**. Recording payment and checking in are one atomic operation — staff does **not** do a separate QR scan after this.
+
+```
+POST /api/staff/record-payment
+```
+
+**Access:** STAFF, ADMIN
+
+**Request Body** (`application/json`):
+```json
+{
+  "ticketReference": "TKT-2026-XY9Z01",
+  "action": "PAID"
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `ticketReference` | String | ✅ | From the member's QR code or booking |
+| `action` | String | ✅ | `"PAID"` or `"COMPLIMENTARY"` |
+
+**What each action does:**
+
+| Action | New `paymentStatus` | Meaning |
+|---|---|---|
+| `PAID` | `CONFIRMED` | Member paid cash/card at the gate |
+| `COMPLIMENTARY` | `COMPLIMENTARY` | Staff waived the fee for this member |
+
+---
+
+#### Success Response `200 OK`
+
+```json
+{
+  "ticketReference": "TKT-2026-XY9Z01",
+  "memberId": "RIC-2024-04512",
+  "eventTitle": "Mere Mehboob Na Ja…",
+  "quantity": 2,
+  "totalAmount": 2000.00,
+  "paymentStatus": "CONFIRMED",
+  "alreadyCheckedIn": false,
+  "checkedInAt": "2026-07-08T18:40:15",
+  "message": "✅ Payment recorded and member checked in"
+}
+```
+
+For `COMPLIMENTARY` action, `paymentStatus` will be `"COMPLIMENTARY"` and the message will be `"✅ Marked complimentary and member checked in"`.
+
+---
+
+#### Error Responses
+
+| HTTP | Scenario | Message |
+|---|---|---|
+| `404 Not Found` | Ticket reference doesn't exist | `"Ticket not found: TKT-2026-XXXXXX"` |
+| `400 Bad Request` | Invalid action value | `"Action must be 'PAID' or 'COMPLIMENTARY'"` |
+| `409 Conflict` | Status is already `CONFIRMED` | `"This ticket has already been paid online and checked in via QR scan."` |
+| `409 Conflict` | Status is `FREE` | `"This is a free ticket — no payment collection needed. Use QR check-in."` |
+| `409 Conflict` | Status is already `COMPLIMENTARY` | `"This ticket has already been marked complimentary."` |
+| `409 Conflict` | Status is `PENDING` | `"This ticket has an incomplete online payment, not a Pay-at-Gate booking."` |
+| `409 Conflict` | Status is `FAILED` | `"This ticket's payment failed. The member does not have a valid booking."` |
+
+---
+
+#### Database Changes
+
+| Field | Before | After |
+|---|---|---|
+| `paymentStatus` | `PAY_AT_GATE` | `CONFIRMED` or `COMPLIMENTARY` |
+| `isCheckedIn` | `false` | `true` |
+| `checkedInAt` | `null` | Current timestamp |
+
+---
+
+#### Why PAY_AT_GATE uses record-payment instead of the check-in scan
+
+For `CONFIRMED`, `FREE`, and `COMPLIMENTARY` tickets, money has already been settled before the member arrives at the gate, so scanning the QR code is the only remaining step.
+
+For `PAY_AT_GATE`, the member hasn't paid yet. If the QR scan admitted them before payment was recorded, staff could forget to record it and the member would be inside with an unpaid ticket. By requiring payment to be recorded first, the two steps are fused into one action — the money is confirmed and the member is admitted simultaneously with no gap.
+
+---
+
+
+
 ## Member Registration API
 
 > **Access:** These endpoints are PUBLIC but are used exclusively for member ticketing.
+
 
 ### 1. Verify Member (Soft Login)
 

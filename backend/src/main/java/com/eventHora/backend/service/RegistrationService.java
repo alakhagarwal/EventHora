@@ -5,10 +5,13 @@ import com.eventHora.backend.Enum.MemberType;
 import com.eventHora.backend.Enum.PaymentPreference;
 import com.eventHora.backend.Enum.PaymentStatus;
 import com.eventHora.backend.dto.BookingIntent;
+import com.eventHora.backend.dto.CheckInRequest;
+import com.eventHora.backend.dto.CheckInResponse;
 import com.eventHora.backend.dto.ConfirmPaymentRequest;
 import com.eventHora.backend.dto.InitiateBookingRequest;
 import com.eventHora.backend.dto.InitiateBookingResponse;
 import com.eventHora.backend.dto.MemberSession;
+import com.eventHora.backend.dto.RecordPaymentRequest;
 import com.eventHora.backend.dto.RegistrationResponse;
 import com.eventHora.backend.dto.VerifyMemberRequest;
 import com.eventHora.backend.dto.VerifyMemberResponse;
@@ -737,6 +740,177 @@ public class RegistrationService {
                 .totalAmount(registration.getTotalAmount())
                 .paymentStatus(registration.getPaymentStatus())
                 .razorpayOrderId(registration.getRazorpayOrderId())
+                .build();
+    }
+// ─── Endpoint: Staff QR Check-In ─────────────────────────────────────────
+
+    /**
+     * POST /api/staff/checkin
+     *
+     * Called when a STAFF member scans a member's QR code at the event gate.
+     *
+     * Business rules:
+     *  - Only tickets with a "locked" payment status (CONFIRMED, FREE,
+     *    PAY_AT_GATE, COMPLIMENTARY) can be admitted.
+     *  - PENDING → rejected with a specific message telling staff to redirect
+     *    the member to make a new Pay-at-Gate booking.
+     *  - FAILED  → rejected — the member's online payment did not go through.
+     *  - If the ticket has already been checked in (duplicate scan) the method
+     *    returns 200 with alreadyCheckedIn=true so the UI can show a warning
+     *    without treating it as a hard error (accidental double-scan is common).
+     */
+    @Transactional
+    public CheckInResponse checkIn(CheckInRequest request) {
+
+        // 1. Look up the registration by ticketReference
+        Registration registration = registrationRepository
+                .findByTicketReference(request.getTicketReference())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Ticket not found: " + request.getTicketReference()));
+
+        PaymentStatus status = registration.getPaymentStatus();
+
+        // 2. Validate payment status
+        //    PAY_AT_GATE is intentionally rejected here — staff must collect cash first
+        //    via POST /api/staff/record-payment, which records payment and checks in atomically.
+        switch (status) {
+            case PENDING -> throw new IllegalStateException(
+                    "This ticket has an incomplete online payment. " +
+                    "Please ask the member to make a new Pay-at-Gate booking if seats are still available.");
+            case FAILED -> throw new IllegalStateException(
+                    "This ticket's payment failed. The member does not have a valid booking.");
+            case PAY_AT_GATE -> throw new IllegalStateException(
+                    "Payment collection required before entry. " +
+                    "Please collect the cash/card payment and " +
+                    "confirm payment to check in the member.");
+            default -> {
+                // CONFIRMED, FREE, COMPLIMENTARY — valid for direct entry
+            }
+        }
+
+        // 3. Idempotent duplicate-scan handling
+        //    If already checked in, return the existing data with a warning flag.
+        //    Do NOT flip the timestamp again — preserve the original check-in time.
+        if (registration.isCheckedIn()) {
+            log.warn("Duplicate scan: ticket {} was already checked in at {}",
+                    registration.getTicketReference(), registration.getCheckedInAt());
+            return CheckInResponse.builder()
+                    .ticketReference(registration.getTicketReference())
+                    .memberId(registration.getMemberId())
+                    .eventTitle(registration.getEvent().getTitle())
+                    .quantity(registration.getQuantity())
+                    .totalAmount(registration.getTotalAmount())
+                    .paymentStatus(registration.getPaymentStatus())
+                    .alreadyCheckedIn(true)
+                    .checkedInAt(registration.getCheckedInAt())
+                    .message("⚠️ Already checked in at " + registration.getCheckedInAt())
+                    .build();
+        }
+
+        // 4. First-time check-in — record the timestamp and flip the flag
+        LocalDateTime now = LocalDateTime.now();
+        registration.setCheckedIn(true);
+        registration.setCheckedInAt(now);
+        registrationRepository.save(registration);
+
+        log.info("Check-in: member {} admitted for event '{}' (ticket: {}, qty: {})",
+                registration.getMemberId(),
+                registration.getEvent().getTitle(),
+                registration.getTicketReference(),
+                registration.getQuantity());
+
+        return CheckInResponse.builder()
+                .ticketReference(registration.getTicketReference())
+                .memberId(registration.getMemberId())
+                .eventTitle(registration.getEvent().getTitle())
+                .quantity(registration.getQuantity())
+                .totalAmount(registration.getTotalAmount())
+                .paymentStatus(registration.getPaymentStatus())
+                .alreadyCheckedIn(false)
+                .checkedInAt(now)
+                .message("✅ Check-in successful")
+                .build();
+    }
+
+    // ─── Endpoint: Staff Record Gate Payment ──────────────────────────────────
+
+    /**
+     * POST /api/staff/record-payment
+     *
+     * Records cash (or complimentary) collection for a PAY_AT_GATE ticket
+     * and simultaneously checks the member in.
+     *
+     * These two operations are intentionally atomic:
+     *   - Collecting payment IS the act of admitting the member at the gate.
+     *   - Staff does not need a second QR scan after recording payment.
+     *
+     * Business rules:
+     *  - Only PAY_AT_GATE tickets can be processed here.
+     *  - PAID action   → paymentStatus CONFIRMED   (cash/card collected)
+     *  - COMP action   → paymentStatus COMPLIMENTARY (fee waived by staff)
+     *  - Any other current status → rejected with an explanation.
+     */
+    @Transactional
+    public CheckInResponse recordGatePayment(RecordPaymentRequest request) {
+
+        // 1. Look up the registration
+        Registration registration = registrationRepository
+                .findByTicketReference(request.getTicketReference())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Ticket not found: " + request.getTicketReference()));
+
+        PaymentStatus currentStatus = registration.getPaymentStatus();
+
+        // 2. Only PAY_AT_GATE tickets can be processed at this endpoint
+        if (currentStatus != PaymentStatus.PAY_AT_GATE) {
+            String reason = switch (currentStatus) {
+                case CONFIRMED     -> "This ticket has already been paid online and checked in via QR scan.";
+                case FREE          -> "This is a free ticket — no payment collection needed. Use QR check-in.";
+                case COMPLIMENTARY -> "This ticket has already been marked complimentary.";
+                case PENDING       -> "This ticket has an incomplete online payment, not a Pay-at-Gate booking.";
+                case FAILED        -> "This ticket's payment failed. The member does not have a valid booking.";
+                default            -> "This ticket cannot be processed here (status: " + currentStatus + ").";
+            };
+            throw new IllegalStateException(reason);
+        }
+
+        // 3. Apply the action
+        PaymentStatus newStatus = switch (request.getAction()) {
+            case "PAID"          -> PaymentStatus.CONFIRMED;
+            case "COMPLIMENTARY" -> PaymentStatus.COMPLIMENTARY;
+            default -> throw new IllegalArgumentException(
+                    "Invalid action '" + request.getAction() + "'. Must be 'PAID' or 'COMPLIMENTARY'.");
+        };
+
+        // 4. Record payment + check in atomically
+        LocalDateTime now = LocalDateTime.now();
+        registration.setPaymentStatus(newStatus);
+        registration.setCheckedIn(true);
+        registration.setCheckedInAt(now);
+        registrationRepository.save(registration);
+
+        log.info("Gate payment: member {} — {} for event '{}' (ticket: {}, qty: {}, amount: {})",
+                registration.getMemberId(),
+                request.getAction(),
+                registration.getEvent().getTitle(),
+                registration.getTicketReference(),
+                registration.getQuantity(),
+                registration.getTotalAmount());
+
+        String message = newStatus == PaymentStatus.CONFIRMED
+                ? "✅ Payment recorded and member checked in"
+                : "✅ Marked complimentary and member checked in";
+
+        return CheckInResponse.builder()
+                .ticketReference(registration.getTicketReference())
+                .memberId(registration.getMemberId())
+                .eventTitle(registration.getEvent().getTitle())
+                .quantity(registration.getQuantity())
+                .totalAmount(registration.getTotalAmount())
+                .paymentStatus(newStatus)
+                .alreadyCheckedIn(false)
+                .checkedInAt(now)
+                .message(message)
                 .build();
     }
 }
