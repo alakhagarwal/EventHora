@@ -84,6 +84,9 @@ public class Registration {
     @Builder.Default
     private boolean isCheckedIn = false;   // Flipped to true when staff scans QR at the gate
 
+    @Column
+    private LocalDateTime checkedInAt;     // Timestamp of gate check-in — null until staff scans the QR
+
     // ─── Ticket ───────────────────────────────────────────────────────────────
 
     @Column(nullable = false, unique = true)

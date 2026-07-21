@@ -368,8 +368,8 @@ src/main/java/com/eventHora/backend/
 
 ## Event Management API
 
-> **Access:** All event management endpoints require ADMIN role.
-> Add `Authorization: Bearer <admin-token>` to every request.
+> **Access:** Most event management endpoints require ADMIN role. Read-only dashboard endpoints are also accessible to STAFF.
+> Add `Authorization: Bearer <token>` to every request.
 
 ### Event Status Lifecycle
 
@@ -510,13 +510,15 @@ No request body needed.
 
 ---
 
-### 5. List All Events (Admin Dashboard)
+### 5. List All Events (Admin & Staff Dashboard)
 
 Returns a summary list of all events in the system, ordered by event date (newest first). Includes events of all statuses.
 
 ```
 GET /api/admin/events
 ```
+
+**Access:** ADMIN, STAFF
 
 **Success Response `200 OK`:**
 ```json
@@ -542,13 +544,15 @@ GET /api/admin/events
 
 ---
 
-### 6. Get Single Event (Admin Detail View)
+### 6. Get Single Event (Admin & Staff Detail View)
 
 Returns the **full details** of a single event regardless of its status (DRAFT, PUBLISHED, CANCELLED). Use this before making a `PATCH` update call so you can see the current values of every field.
 
 ```
 GET /api/admin/events/{id}
 ```
+
+**Access:** ADMIN, STAFF
 
 No request body needed.
 
@@ -648,9 +652,246 @@ If the slug doesn't exist or the event is in `DRAFT`/`CANCELLED` status.
 
 ---
 
+## Staff Operations API
+
+> **Access:** All endpoints in this section require a valid JWT with `STAFF` or `ADMIN` role.
+> Add `Authorization: Bearer <token>` to every request.
+
+These endpoints are designed for use on event day — typically by a STAFF member on their phone or tablet at the entry gate.
+
+---
+
+### Event Day Gate Application Flow (Frontend Guide)
+
+For developers building the gate scanner application, here is the expected step-by-step UI flow for every possible scenario when staff scans a ticket.
+
+#### Scenario A: Member has already paid (or it's a free event)
+**Status:** `CONFIRMED`, `FREE`, or `COMPLIMENTARY`
+1. Staff opens the scanner app and scans the member's QR code.
+2. App calls `POST /api/staff/checkin`.
+3. Backend returns `200 OK` (with `alreadyCheckedIn: false`).
+4. **UI Action:** Show a **Green Success Screen** with the member's ID and quantity of tickets. Admittance complete.
+
+#### Scenario B: Member chose Pay-at-Gate
+**Status:** `PAY_AT_GATE`
+1. Staff scans the member's QR code.
+2. App calls `POST /api/staff/checkin`.
+3. Backend rejects the check-in and returns `409 Conflict` (Message: *"Payment collection required before entry..."*).
+4. **UI Action:** App catches the `409` and automatically transitions to a **Payment Collection Screen** showing the total amount due.
+5. Staff collects cash from the member and taps "Confirm Payment" in the app.
+6. App calls `POST /api/staff/record-payment` with action `"PAID"`.
+7. Backend returns `200 OK` (recording payment and check-in atomically).
+8. **UI Action:** Show the **Green Success Screen**. Admittance complete.
+
+#### Scenario C: Member abandoned online payment
+**Status:** `PENDING`
+1. Staff scans the member's QR code.
+2. App calls `POST /api/staff/checkin`.
+3. Backend returns `409 Conflict` (Message: *"This ticket has an incomplete online payment..."*).
+4. **UI Action:** Show a **Red Error Screen** with the backend message. Staff instructs the member to step aside and make a fresh Pay-at-Gate booking on their phone (if seats remain).
+
+#### Scenario D: Accidental Double-Scan
+**Status:** Any valid status, but already checked in
+1. Staff accidentally scans a QR code that was already scanned a few minutes ago.
+2. App calls `POST /api/staff/checkin`.
+3. Backend returns `200 OK` but with the flag `alreadyCheckedIn: true`.
+4. **UI Action:** Show a **Yellow Warning Screen** ("⚠️ Already checked in"). Staff visually verifies if this is the same person who just walked in, or someone trying to share their ticket.
+
+---
+
+### 1. QR Code Gate Check-In
+
+Scans a member's QR ticket at the event gate and records their entry.
+
+```
+POST /api/staff/checkin
+```
+
+**Access:** STAFF, ADMIN
+
+**Request Body** (`application/json`):
+```json
+{
+  "ticketReference": "TKT-2026-AB12CD"
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `ticketReference` | String | ✅ | Embedded in the member's QR code |
+
+---
+
+#### Success Response `200 OK` — First-time scan
+
+```json
+{
+  "ticketReference": "TKT-2026-AB12CD",
+  "memberId": "RIC-2024-04512",
+  "eventTitle": "Mere Mehboob Na Ja…",
+  "quantity": 2,
+  "totalAmount": 2000.00,
+  "paymentStatus": "CONFIRMED",
+  "alreadyCheckedIn": false,
+  "checkedInAt": "2026-07-08T18:35:22",
+  "message": "✅ Check-in successful"
+}
+```
+
+The staff member's screen should display a **green confirmation** with the member's ID, event name, and number of tickets (people) admitted.
+
+---
+
+#### Success Response `200 OK` — Duplicate scan ⚠️
+
+If the same QR code is scanned a second time (accidental re-scan), the endpoint still returns `200 OK` but with `alreadyCheckedIn: true`:
+
+```json
+{
+  "ticketReference": "TKT-2026-AB12CD",
+  "memberId": "RIC-2024-04512",
+  "eventTitle": "Mere Mehboob Na Ja…",
+  "quantity": 2,
+  "totalAmount": 2000.00,
+  "paymentStatus": "CONFIRMED",
+  "alreadyCheckedIn": true,
+  "checkedInAt": "2026-07-08T18:35:22",
+  "message": "⚠️ Already checked in at 2026-07-08T18:35:22"
+}
+```
+
+> **Why `200` and not an error?** Accidental double-scans are common (busy gates, QR re-shown on phone). A `409` would crash many frontend implementations and create confusion. Instead, the response carries the `alreadyCheckedIn` flag so the UI can show a distinct **yellow warning screen** vs. the green success screen.
+>
+> The `checkedInAt` timestamp preserves the **original** check-in time — it is never overwritten.
+
+---
+
+#### Error Responses
+
+| HTTP | Scenario | Message |
+|---|---|---|
+| `404 Not Found` | Ticket reference doesn't exist | `"Ticket not found: TKT-2026-XXXXXX"` |
+| `409 Conflict` | Payment is `PENDING` (online payment incomplete) | `"This ticket has an incomplete online payment. Please ask the member to make a new Pay-at-Gate booking if seats are still available."` |
+| `409 Conflict` | Payment is `FAILED` | `"This ticket's payment failed. The member does not have a valid booking."` |
+| `401 Unauthorized` | JWT missing or expired | Standard auth error |
+| `403 Forbidden` | Insufficient role | Standard RBAC error |
+
+---
+
+#### Valid Statuses for Entry
+
+| Payment Status | Admitted? | Notes |
+|---|---|---|
+| `CONFIRMED` | ✅ Yes | Online payment was successful |
+| `FREE` | ✅ Yes | Free event or complimentary booking |
+| `COMPLIMENTARY` | ✅ Yes | Fee waived by staff |
+| `PAY_AT_GATE` | ➡️ Redirect | Use `POST /api/staff/record-payment` to collect payment and check in atomically |
+| `PENDING` | ❌ No | Online payment started but not completed |
+| `FAILED` | ❌ No | Payment attempt failed |
+
+---
+
+#### Database Change on Check-In
+
+| Field | Before | After |
+|---|---|---|
+| `isCheckedIn` | `false` | `true` |
+| `checkedInAt` | `null` | Current timestamp |
+
+---
+
+### 2. Record Gate Payment (PAY_AT_GATE tickets)
+
+Records cash or complimentary collection for a `PAY_AT_GATE` ticket.
+
+This is the **only way to admit a PAY_AT_GATE member**. Recording payment and checking in are one atomic operation — staff does **not** do a separate QR scan after this.
+
+```
+POST /api/staff/record-payment
+```
+
+**Access:** STAFF, ADMIN
+
+**Request Body** (`application/json`):
+```json
+{
+  "ticketReference": "TKT-2026-XY9Z01",
+  "action": "PAID"
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `ticketReference` | String | ✅ | From the member's QR code or booking |
+| `action` | String | ✅ | `"PAID"` or `"COMPLIMENTARY"` |
+
+**What each action does:**
+
+| Action | New `paymentStatus` | Meaning |
+|---|---|---|
+| `PAID` | `CONFIRMED` | Member paid cash/card at the gate |
+| `COMPLIMENTARY` | `COMPLIMENTARY` | Staff waived the fee for this member |
+
+---
+
+#### Success Response `200 OK`
+
+```json
+{
+  "ticketReference": "TKT-2026-XY9Z01",
+  "memberId": "RIC-2024-04512",
+  "eventTitle": "Mere Mehboob Na Ja…",
+  "quantity": 2,
+  "totalAmount": 2000.00,
+  "paymentStatus": "CONFIRMED",
+  "alreadyCheckedIn": false,
+  "checkedInAt": "2026-07-08T18:40:15",
+  "message": "✅ Payment recorded and member checked in"
+}
+```
+
+For `COMPLIMENTARY` action, `paymentStatus` will be `"COMPLIMENTARY"` and the message will be `"✅ Marked complimentary and member checked in"`.
+
+---
+
+#### Error Responses
+
+| HTTP | Scenario | Message |
+|---|---|---|
+| `404 Not Found` | Ticket reference doesn't exist | `"Ticket not found: TKT-2026-XXXXXX"` |
+| `400 Bad Request` | Invalid action value | `"Action must be 'PAID' or 'COMPLIMENTARY'"` |
+| `409 Conflict` | Status is already `CONFIRMED` | `"This ticket has already been paid online and checked in via QR scan."` |
+| `409 Conflict` | Status is `FREE` | `"This is a free ticket — no payment collection needed. Use QR check-in."` |
+| `409 Conflict` | Status is already `COMPLIMENTARY` | `"This ticket has already been marked complimentary."` |
+| `409 Conflict` | Status is `PENDING` | `"This ticket has an incomplete online payment, not a Pay-at-Gate booking."` |
+| `409 Conflict` | Status is `FAILED` | `"This ticket's payment failed. The member does not have a valid booking."` |
+
+---
+
+#### Database Changes
+
+| Field | Before | After |
+|---|---|---|
+| `paymentStatus` | `PAY_AT_GATE` | `CONFIRMED` or `COMPLIMENTARY` |
+| `isCheckedIn` | `false` | `true` |
+| `checkedInAt` | `null` | Current timestamp |
+
+---
+
+#### Why PAY_AT_GATE uses record-payment instead of the check-in scan
+
+For `CONFIRMED`, `FREE`, and `COMPLIMENTARY` tickets, money has already been settled before the member arrives at the gate, so scanning the QR code is the only remaining step.
+
+For `PAY_AT_GATE`, the member hasn't paid yet. If the QR scan admitted them before payment was recorded, staff could forget to record it and the member would be inside with an unpaid ticket. By requiring payment to be recorded first, the two steps are fused into one action — the money is confirmed and the member is admitted simultaneously with no gap.
+
+---
+
+
+
 ## Member Registration API
 
 > **Access:** These endpoints are PUBLIC but are used exclusively for member ticketing.
+
 
 ### 1. Verify Member (Soft Login)
 
@@ -961,8 +1202,140 @@ If this happens:
 **Error Responses:**
 - `404 Not Found`: `ticketReference` does not exist — `"Ticket not found: TKT-2026-AB12CD"`
 - `400 Bad Request`: Signature invalid — `"Payment verification failed. The payment data is invalid or was tampered with."`
-- `409 Conflict`: Ticket is in a non-PENDING state (already CONFIRMED, FAILED, FREE, etc.) — `"Cannot confirm payment for a ticket with status: FREE"`
+- `409 Conflict`: Ticket is `FREE` or `PAY_AT_GATE` — those are not online payments, this endpoint does not apply — `"Cannot confirm payment for a ticket with status: FREE"`
 - `409 Conflict`: Sold-out race condition — `"We're sorry — this event just sold out while your payment was processing..."`
+
+> **Note on `FAILED` status:** If a `payment.failed` webhook arrived before this call (e.g. the user's first UPI attempt failed but they retried with a credit card on the same Razorpay order), the registration may be in `FAILED` state. This endpoint **does not reject** `FAILED` status — it allows the request through and lets the Razorpay signature verify whether the payment is genuinely successful.
 
 ---
 
+
+## Registration Endpoints — Webhook
+
+### 5. Razorpay Webhook
+
+Server-to-server event notifications from Razorpay. This is the **safety net** for the entire payment flow — it fires regardless of what the user's browser does.
+
+```
+POST /api/webhooks/razorpay
+```
+
+**Access:** Called by Razorpay servers only. Secured by HMAC-SHA256 signature verification on every request.
+
+---
+
+#### Why This Exists
+
+The normal flow after payment is:
+```
+User pays → Razorpay popup closes → Frontend calls /confirm-payment → Ticket confirmed
+```
+
+But if the user's browser crashes, their internet drops, or they close the tab the instant payment succeeds, `/confirm-payment` is never called. The ticket stays `PENDING` forever even though money was taken.
+
+Razorpay's server-to-server webhook fires **regardless of the frontend**. This endpoint catches those orphaned payments and confirms the ticket automatically.
+
+---
+
+#### Request
+
+Razorpay sends a raw JSON body with a signature header:
+
+```
+Content-Type: application/json
+X-Razorpay-Signature: a3f2b9c1d4e5f6...
+```
+
+Example body for `payment.captured`:
+```json
+{
+  "event": "payment.captured",
+  "payload": {
+    "payment": {
+      "entity": {
+        "id": "pay_Qx3Rabc...",
+        "order_id": "order_PwZa8xyz...",
+        "status": "captured"
+      }
+    }
+  }
+}
+```
+
+---
+
+#### Signature Verification
+
+Before processing any event, the backend verifies the request is genuinely from Razorpay:
+```
+expected = HMAC-SHA256(entire raw request body, RAZORPAY_WEBHOOK_SECRET)
+valid    = (expected == X-Razorpay-Signature header)
+```
+
+This uses a **separate webhook secret** (not the API key secret). It is configured in the Razorpay dashboard when you create the webhook.
+
+If the signature does not match, the request is silently ignored and `200 OK` is still returned.
+
+---
+
+#### Events Handled
+
+| Event | Trigger | Action |
+|---|---|---|
+| `payment.captured` | User's payment succeeded | Marks registration `CONFIRMED`. Applies sold-out guard; refunds automatically if sold out. |
+| `payment.failed` | User's card/UPI was declined | Marks registration `FAILED` — member can retry immediately. |
+| Any other event | Settlements, disputes, etc. | Logged and ignored. |
+
+---
+
+#### Retry-After-Failure on Same Razorpay Order
+
+Razorpay allows the user to try multiple payment methods within the same popup (same `order_id`). For example:
+
+1. User tries UPI → fails → `payment.failed` webhook → registration marked `FAILED`
+2. User tries credit card (same popup, same `order_id`) → succeeds
+3. `payment.captured` webhook fires → finds registration by `order_id` → status is `FAILED` (not `CONFIRMED`) → proceeds to confirm ✅
+4. Ticket marked `CONFIRMED`
+
+The same scenario works via `/confirm-payment` too — that endpoint also accepts `FAILED` status since the Razorpay signature cryptographically proves the payment is genuine.
+
+---
+
+#### Idempotency
+
+Razorpay retries webhooks if it does not receive `200 OK` quickly. Every handler checks the current state before acting:
+
+| Webhook event | Current status | Action |
+|---|---|---|
+| `payment.captured` | `PENDING` or `FAILED` | Confirm ticket ✅ |
+| `payment.captured` | `CONFIRMED` | Skip — already confirmed (idempotent) |
+| `payment.failed` | `PENDING` | Mark FAILED ✅ |
+| `payment.failed` | `FAILED` | Skip — already failed (idempotent) |
+| `payment.failed` | `CONFIRMED` | Skip — **never downgrade a confirmed ticket** |
+
+---
+
+#### Response
+
+This endpoint **always** returns `200 OK` with body `"ok"`, even on internal errors or invalid signatures. This is intentional:
+- Returning `4xx`/`5xx` causes Razorpay to retry for up to 24 hours, risking duplicate processing.
+- Attackers get no feedback about why a spoofed request was rejected.
+
+---
+
+#### Database Changes
+
+**On `payment.captured` (success path):**
+
+| Field | Before | After |
+|---|---|---|
+| `paymentStatus` | `PENDING` or `FAILED` | `CONFIRMED` |
+| `razorpayPaymentId` | `null` | `"pay_Qx3Rabc..."` |
+
+**On `payment.failed`:**
+
+| Field | Before | After |
+|---|---|---|
+| `paymentStatus` | `PENDING` | `FAILED` |
+
+---
