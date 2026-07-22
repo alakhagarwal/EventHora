@@ -50,6 +50,18 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
      */
     Optional<Registration> findByRazorpayOrderId(String razorpayOrderId);
 
+    // ─── Phase 8A: Member Self-Service (My Bookings) ──────────────────────────
+
+    /**
+     * Returns all registrations for a given member, ordered by booking time (newest first).
+     * Used by GET /api/registration/my-bookings.
+     *
+     * The LAZY Event association is safe to traverse inside a @Transactional service method.
+     * Results include ALL statuses — PENDING, FAILED included — so the member can see their
+     * full history, not just successful bookings.
+     */
+    List<Registration> findByMemberIdOrderByBookedAtDesc(String memberId);
+
     // ─── Phase 7A: Admin Registration List ────────────────────────────────────
 
     /**
@@ -125,4 +137,46 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
         nativeQuery = true
     )
     long sumCheckedInTicketsForEvent(@Param("eventId") UUID eventId);
+
+    // ─── Phase 7C: Dashboard ──────────────────────────────────────────────────
+
+    /**
+     * Overall revenue breakdown across ALL events.
+     * Returns Object[] rows: [0] = payment_status, [1] = registrationCount, [2] = totalAmount.
+     * Used by the dashboard to compute all-time totalRevenue, pendingGateCollection, complimentaryWaived.
+     */
+    @Query(
+        value = """
+            SELECT
+                r.payment_status                    AS paymentStatus,
+                COUNT(r.id)                         AS registrationCount,
+                COALESCE(SUM(r.quantity), 0)        AS ticketCount,
+                COALESCE(SUM(r.total_amount), 0.00) AS totalAmount
+            FROM registrations r
+            GROUP BY r.payment_status
+            """,
+        nativeQuery = true
+    )
+    List<Object[]> getGlobalPaymentAggregates();
+
+    /**
+     * Revenue and registration stats for bookings created in the current calendar month.
+     * :startOfMonth is the 1st of the current month at 00:00:00.
+     *
+     * Returns Object[] rows: [0] = payment_status, [1] = registrationCount, [2] = ticketCount, [3] = totalAmount.
+     */
+    @Query(
+        value = """
+            SELECT
+                r.payment_status                    AS paymentStatus,
+                COUNT(r.id)                         AS registrationCount,
+                COALESCE(SUM(r.quantity), 0)        AS ticketCount,
+                COALESCE(SUM(r.total_amount), 0.00) AS totalAmount
+            FROM registrations r
+            WHERE r.booked_at >= :startOfMonth
+            GROUP BY r.payment_status
+            """,
+        nativeQuery = true
+    )
+    List<Object[]> getMonthlyPaymentAggregates(@Param("startOfMonth") java.time.LocalDateTime startOfMonth);
 }

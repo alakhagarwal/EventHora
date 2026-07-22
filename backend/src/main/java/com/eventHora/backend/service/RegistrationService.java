@@ -11,6 +11,7 @@ import com.eventHora.backend.dto.ConfirmPaymentRequest;
 import com.eventHora.backend.dto.InitiateBookingRequest;
 import com.eventHora.backend.dto.InitiateBookingResponse;
 import com.eventHora.backend.dto.MemberSession;
+import com.eventHora.backend.dto.MyBookingResponse;
 import com.eventHora.backend.dto.RecordPaymentRequest;
 import com.eventHora.backend.dto.RegistrationResponse;
 import com.eventHora.backend.dto.VerifyMemberRequest;
@@ -34,6 +35,7 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.Year;
+import java.util.List;
 import java.util.Random;
 import java.util.UUID;
 
@@ -911,6 +913,59 @@ public class RegistrationService {
                 .alreadyCheckedIn(false)
                 .checkedInAt(now)
                 .message(message)
+                .build();
+    }
+    // ─── Phase 8A: Member Self-Service — My Bookings ──────────────────────────
+
+    /**
+     * GET /api/registration/my-bookings?sessionToken={token}
+     *
+     * Returns a member's complete booking history across all events, newest first.
+     *
+     * The session token must be valid (in Redis). We do NOT accept the memberId
+     * from the query param directly — the session is the source of truth to prevent
+     * a member from peeking at another member's bookings by guessing their ID.
+     *
+     * All statuses are returned (PENDING, FAILED, CONFIRMED, etc.) so the member
+     * can see their full history, including failed payment attempts.
+     *
+     * @Transactional(readOnly = true) is required because Registration.event is
+     * FetchType.LAZY and we access event.getTitle() etc. during mapping.
+     */
+    @Transactional(readOnly = true)
+    public List<MyBookingResponse> getMyBookings(String sessionToken) {
+
+        // 1. Resolve session — throws 401 if expired or invalid
+        MemberSession session = getSessionOrThrow(sessionToken);
+
+        // 2. Fetch all registrations for this member, newest first
+        List<Registration> registrations = registrationRepository
+                .findByMemberIdOrderByBookedAtDesc(session.getMemberId());
+
+        log.info("My Bookings: member {} has {} registration(s)", session.getMemberId(), registrations.size());
+
+        // 3. Map to member-facing DTO
+        return registrations.stream()
+                .map(this::toMyBookingResponse)
+                .toList();
+    }
+
+    private MyBookingResponse toMyBookingResponse(Registration r) {
+        return MyBookingResponse.builder()
+                .ticketReference(r.getTicketReference())
+                .quantity(r.getQuantity())
+                .totalAmount(r.getTotalAmount())
+                .paymentStatus(r.getPaymentStatus())
+                .paymentPreference(r.getPaymentPreference())
+                .isCheckedIn(r.isCheckedIn())
+                .checkedInAt(r.getCheckedInAt())
+                // Event fields — safe to access inside @Transactional
+                .eventTitle(r.getEvent().getTitle())
+                .eventDate(r.getEvent().getEventDate())
+                .eventStartTime(r.getEvent().getStartTime())
+                .eventVenue(r.getEvent().getVenue())
+                .eventUniqueLink(r.getEvent().getUniqueEventLink())
+                .bookedAt(r.getBookedAt())
                 .build();
     }
 }

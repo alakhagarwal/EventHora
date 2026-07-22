@@ -441,4 +441,137 @@ public class EventService {
                 .complimentaryWaived(complimentaryWaived)
                 .build();
     }
+
+    // ─── Phase 7C: Admin Dashboard ────────────────────────────────────────────────
+
+    /**
+     * GET /api/admin/dashboard
+     *
+     * Returns a cross-event platform snapshot: event counts by status,
+     * all-time registration and revenue stats, and this-month equivalents.
+     *
+     * Uses 4 DB queries:
+     *   1. countEventsByStatus()       — events grouped by status
+     *   2. countUpcomingEvents()       — PUBLISHED events on/after today
+     *   3. getGlobalPaymentAggregates() — all-time registration/revenue by status
+     *   4. getMonthlyPaymentAggregates() — same, scoped to current calendar month
+     */
+    @Transactional(readOnly = true)
+    public DashboardResponse getDashboard() {
+
+        // ── 1. Events by status ──────────────────────────────────────────────
+        long totalEvents      = 0;
+        long publishedEvents  = 0;
+        long draftEvents      = 0;
+        long completedEvents  = 0;
+        long cancelledEvents  = 0;
+
+        for (Object[] row : eventRepository.countEventsByStatus()) {
+            String status = (String) row[0];
+            long   count  = ((Number) row[1]).longValue();
+            totalEvents  += count;
+            switch (EventStatus.valueOf(status)) {
+                case PUBLISHED  -> publishedEvents  = count;
+                case DRAFT      -> draftEvents      = count;
+                case COMPLETED  -> completedEvents  = count;
+                case CANCELLED  -> cancelledEvents  = count;
+            }
+        }
+
+        long upcomingEvents = eventRepository.countUpcomingEvents(java.time.LocalDate.now());
+
+        // ── 2. Global (all-time) registration + revenue aggregates ───────────
+        long totalRegistrations  = 0;
+        long lockedRegistrations = 0;
+        long totalTicketsSold    = 0;
+
+        BigDecimal totalRevenue          = BigDecimal.ZERO;
+        BigDecimal pendingGateCollection = BigDecimal.ZERO;
+        BigDecimal complimentaryWaived   = BigDecimal.ZERO;
+
+        for (Object[] row : registrationRepository.getGlobalPaymentAggregates()) {
+            String     status    = (String) row[0];
+            long       regCount  = ((Number) row[1]).longValue();
+            long       ticketCnt = ((Number) row[2]).longValue();
+            BigDecimal amount    = new BigDecimal(row[3].toString());
+
+            totalRegistrations += regCount;
+
+            PaymentStatus ps = PaymentStatus.valueOf(status);
+            switch (ps) {
+                case CONFIRMED -> {
+                    lockedRegistrations += regCount;
+                    totalTicketsSold    += ticketCnt;
+                    totalRevenue         = totalRevenue.add(amount);
+                }
+                case FREE -> {
+                    lockedRegistrations += regCount;
+                    totalTicketsSold    += ticketCnt;
+                }
+                case PAY_AT_GATE -> {
+                    lockedRegistrations  += regCount;
+                    totalTicketsSold     += ticketCnt;
+                    pendingGateCollection = pendingGateCollection.add(amount);
+                }
+                case COMPLIMENTARY -> {
+                    lockedRegistrations += regCount;
+                    totalTicketsSold    += ticketCnt;
+                    complimentaryWaived  = complimentaryWaived.add(amount);
+                }
+                case PENDING, FAILED -> { /* don't count as locked */ }
+            }
+        }
+
+        // ── 3. This-month registration + revenue aggregates ──────────────────
+        java.time.LocalDateTime startOfMonth = java.time.LocalDate.now()
+                .withDayOfMonth(1)
+                .atStartOfDay();
+
+        long registrationsThisMonth = 0;
+        long ticketsSoldThisMonth   = 0;
+        BigDecimal revenueThisMonth  = BigDecimal.ZERO;
+
+        for (Object[] row : registrationRepository.getMonthlyPaymentAggregates(startOfMonth)) {
+            String     status    = (String) row[0];
+            long       regCount  = ((Number) row[1]).longValue();
+            long       ticketCnt = ((Number) row[2]).longValue();
+            BigDecimal amount    = new BigDecimal(row[3].toString());
+
+            PaymentStatus ps = PaymentStatus.valueOf(status);
+            // Count all registrations this month (all statuses)
+            registrationsThisMonth += regCount;
+
+            // Only locked statuses count as "sold" tickets this month
+            switch (ps) {
+                case CONFIRMED, FREE, PAY_AT_GATE, COMPLIMENTARY -> ticketsSoldThisMonth += ticketCnt;
+                default -> { /* PENDING/FAILED don't count */ }
+            }
+
+            // Only CONFIRMED counts as revenue this month
+            if (ps == PaymentStatus.CONFIRMED) {
+                revenueThisMonth = revenueThisMonth.add(amount);
+            }
+        }
+
+        log.info("Dashboard: {} events ({} upcoming), {} locked registrations, all-time revenue={}",
+                totalEvents, upcomingEvents, lockedRegistrations, totalRevenue);
+
+        return DashboardResponse.builder()
+                .totalEvents(totalEvents)
+                .publishedEvents(publishedEvents)
+                .upcomingEvents(upcomingEvents)
+                .draftEvents(draftEvents)
+                .completedEvents(completedEvents)
+                .cancelledEvents(cancelledEvents)
+                .totalRegistrations(totalRegistrations)
+                .lockedRegistrations(lockedRegistrations)
+                .totalTicketsSold(totalTicketsSold)
+                .registrationsThisMonth(registrationsThisMonth)
+                .ticketsSoldThisMonth(ticketsSoldThisMonth)
+                .totalRevenue(totalRevenue)
+                .pendingGateCollection(pendingGateCollection)
+                .complimentaryWaived(complimentaryWaived)
+                .revenueThisMonth(revenueThisMonth)
+                .build();
+    }
 }
