@@ -652,6 +652,171 @@ If the slug doesn't exist or the event is in `DRAFT`/`CANCELLED` status.
 
 ---
 
+## Admin Reporting API
+
+> **Access:** All endpoints in this section require a valid JWT with `ADMIN` or `STAFF` role.
+> Add `Authorization: Bearer <token>` to every request.
+
+These endpoints give admins and staff visibility into who registered for an event, what payments were collected, and how full each event is.
+
+---
+
+### 1. List All Registrations for an Event
+
+Returns the full attendee list for a specific event. One row per registration (booking). Ordered by booking time, newest first.
+
+```
+GET /api/admin/events/{eventId}/registrations
+```
+
+**Access:** ADMIN or STAFF
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Notes |
+|---|---|---|---|
+| `eventId` | UUID | ✅ | The internal UUID of the event |
+
+**Success Response `200 OK`:**
+
+Returns an array. Each element is one member's booking:
+
+```json
+[
+  {
+    "registrationId": "uuid-of-registration",
+    "ticketReference": "TKT-2026-AB12CD",
+    "memberId": "RIC-2024-04512",
+    "memberType": "INDIAN",
+    "quantity": 2,
+    "totalAmount": 2000.00,
+    "paymentStatus": "CONFIRMED",
+    "paymentPreference": "ONLINE",
+    "isCheckedIn": true,
+    "checkedInAt": "2026-07-08T18:35:22",
+    "bookedAt": "2026-07-05T10:30:00"
+  },
+  {
+    "registrationId": "uuid-of-registration-2",
+    "ticketReference": "TKT-2026-XY9Z01",
+    "memberId": "RIC-2024-08821",
+    "memberType": "OVERSEAS",
+    "quantity": 1,
+    "totalAmount": 1000.00,
+    "paymentStatus": "PAY_AT_GATE",
+    "paymentPreference": "PAY_AT_GATE",
+    "isCheckedIn": false,
+    "checkedInAt": null,
+    "bookedAt": "2026-07-06T14:15:00"
+  }
+]
+```
+
+**Response Fields:**
+
+| Field | Type | Notes |
+|---|---|---|
+| `registrationId` | UUID | Internal ID (for admin operations) |
+| `ticketReference` | String | User-facing ticket ID (also in QR code) |
+| `memberId` | String | RIC Member ID |
+| `memberType` | String | `INDIAN` or `OVERSEAS` |
+| `quantity` | Integer | Number of tickets booked by this member |
+| `totalAmount` | Decimal | Total charged for this booking |
+| `paymentStatus` | String | `CONFIRMED`, `FREE`, `PAY_AT_GATE`, `COMPLIMENTARY`, `PENDING`, `FAILED` |
+| `paymentPreference` | String | How member chose to pay: `ONLINE` or `PAY_AT_GATE` |
+| `isCheckedIn` | Boolean | Whether the member has been scanned at the gate |
+| `checkedInAt` | DateTime | Gate check-in timestamp — `null` if not yet checked in |
+| `bookedAt` | DateTime | When the booking was created |
+
+**Error Responses:**
+
+| HTTP | Scenario |
+|---|---|
+| `404 Not Found` | Event ID does not exist |
+| `401 Unauthorized` | JWT missing or expired |
+| `403 Forbidden` | Non-ADMIN role (STAFF cannot access this endpoint) |
+
+---
+
+### 2. Payment Summary for an Event
+
+Returns a single-glance financial and capacity snapshot for one event: seat availability, registration counts by payment status, gate check-in statistics, and a revenue breakdown.
+
+```
+GET /api/admin/events/{eventId}/payment-summary
+```
+
+**Access:** ADMIN or STAFF
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Notes |
+|---|---|---|---|
+| `eventId` | UUID | ✅ | The internal UUID of the event |
+
+**Success Response `200 OK`:**
+
+```json
+{
+  "totalCapacity": 500,
+  "seatsLocked": 145,
+  "seatsRemaining": 355,
+
+  "confirmedCount": 110,
+  "payAtGateCount": 25,
+  "freeCount": 5,
+  "complimentaryCount": 5,
+  "pendingCount": 3,
+  "failedCount": 8,
+  "totalRegistrations": 156,
+
+  "checkedInCount": 118,
+  "notCheckedInCount": 27,
+  "checkedInTickets": 130,
+  "notCheckedInTickets": 15,
+
+  "totalRevenue": 110000.00,
+  "pendingGateCollection": 25000.00,
+  "complimentaryWaived": 5000.00
+}
+```
+
+> **Units note:** Capacity fields (`totalCapacity`, `seatsLocked`, `seatsRemaining`) are measured in **tickets** (individual seats). Registration count fields (`confirmedCount`, etc.) are measured in **bookings** — one per member, regardless of how many tickets they booked. Check-in stats exist in both units — see field descriptions below.
+
+**Response Fields Explained:**
+
+| Field | Unit | Notes |
+|---|---|---|
+| `totalCapacity` | Tickets | Total seats configured for the event |
+| `seatsLocked` | Tickets | Sum of `quantity` for `CONFIRMED + FREE + PAY_AT_GATE + COMPLIMENTARY` bookings |
+| `seatsRemaining` | Tickets | `totalCapacity - seatsLocked` (0 if sold out) |
+| `confirmedCount` | Bookings | Members whose online payment was collected via Razorpay |
+| `payAtGateCount` | Bookings | Members who reserved a seat but cash not yet collected |
+| `freeCount` | Bookings | Members on free events (no payment required) |
+| `complimentaryCount` | Bookings | Members whose fee was waived by staff at the gate |
+| `pendingCount` | Bookings | Members with an incomplete Razorpay payment (seat NOT held) |
+| `failedCount` | Bookings | Members whose payment failed or timed out (seat NOT held) |
+| `totalRegistrations` | Bookings | All booking rows in the DB (every status combined) |
+| `checkedInCount` | Bookings | Number of members who have been scanned at the gate |
+| `notCheckedInCount` | Bookings | Locked members who haven't arrived at the gate yet |
+| `checkedInTickets` | Tickets | Sum of `quantity` for checked-in registrations — comparable to `seatsLocked` |
+| `notCheckedInTickets` | Tickets | `seatsLocked - checkedInTickets` — seats still expected to arrive |
+| `totalRevenue` | Money | Sum of `totalAmount` for all `CONFIRMED` bookings (online money collected) |
+| `pendingGateCollection` | Money | Sum of `totalAmount` for `PAY_AT_GATE` bookings (cash not yet collected) |
+| `complimentaryWaived` | Money | Sum of `totalAmount` for `COMPLIMENTARY` bookings (fees waived) |
+
+> **Note:** `PENDING` and `FAILED` bookings do **not** count towards `seatsLocked`. They are included in `totalRegistrations` for visibility only — they hold no seat.
+
+**Error Responses:**
+
+| HTTP | Scenario |
+|---|---|
+| `404 Not Found` | Event ID does not exist |
+| `401 Unauthorized` | JWT missing or expired |
+| `403 Forbidden` | Non-ADMIN/STAFF role |
+
+---
+
 ## Staff Operations API
 
 > **Access:** All endpoints in this section require a valid JWT with `STAFF` or `ADMIN` role.
