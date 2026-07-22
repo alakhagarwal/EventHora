@@ -1,23 +1,29 @@
 package com.eventHora.backend.service;
 
 import com.eventHora.backend.Enum.EventStatus;
+import com.eventHora.backend.Enum.PaymentStatus;
 import com.eventHora.backend.dto.*;
 import com.eventHora.backend.exception.ResourceNotFoundException;
 import com.eventHora.backend.model.Event;
+import com.eventHora.backend.model.Registration;
 import com.eventHora.backend.model.SystemUser;
 import com.eventHora.backend.repository.EventRepository;
 import com.eventHora.backend.repository.RegistrationRepository;
 import com.eventHora.backend.repository.SystemUserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.text.Normalizer;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class EventService {
@@ -298,6 +304,141 @@ public class EventService {
                         && !isSoldOut
                 )
                 .isSoldOut(isSoldOut)
+                .build();
+    }
+    // ─── Phase 7A: Admin Registration List ───────────────────────────────────────
+
+    /**
+     * GET /api/admin/events/{eventId}/registrations
+     *
+     * Returns all registrations for a given event, ordered by booking time (newest first).
+     * Verifies the event exists before querying registrations so we return a meaningful 404
+     * rather than an empty list when the event ID is wrong.
+     *
+     * The LAZY association to Event on Registration is resolved inside this @Transactional
+     * method, so event.getTitle() etc. are safe to call without LazyInitializationException.
+     */
+    @Transactional(readOnly = true)
+    public List<RegistrationSummaryResponse> getRegistrationsForEvent(UUID eventId) {
+
+        // Verify event exists — throw 404 if not
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new ResourceNotFoundException("Event not found: " + eventId));
+
+        List<Registration> registrations = registrationRepository
+                .findByEventIdOrderByBookedAtDesc(eventId);
+
+        log.info("Admin: fetched {} registrations for event '{}'",
+                registrations.size(), event.getTitle());
+
+        return registrations.stream()
+                .map(this::toRegistrationSummaryResponse)
+                .toList();
+    }
+
+    private RegistrationSummaryResponse toRegistrationSummaryResponse(Registration r) {
+        return RegistrationSummaryResponse.builder()
+                .registrationId(r.getId())
+                .ticketReference(r.getTicketReference())
+                .memberId(r.getMemberId())
+                .memberType(r.getMemberType())
+                .quantity(r.getQuantity())
+                .totalAmount(r.getTotalAmount())
+                .paymentStatus(r.getPaymentStatus())
+                .paymentPreference(r.getPaymentPreference())
+                .isCheckedIn(r.isCheckedIn())
+                .checkedInAt(r.getCheckedInAt())
+                .bookedAt(r.getBookedAt())
+                .build();
+    }
+
+    // ─── Phase 7B: Admin Payment Summary ─────────────────────────────────────────
+
+    /**
+     * GET /api/admin/events/{eventId}/payment-summary
+     *
+     * Computes a full payment + capacity snapshot for one event.
+     * Uses a single aggregation query (GROUP BY payment_status) to minimise DB round-trips.
+     *
+     * All amounts are BigDecimal to preserve financial precision.
+     */
+    @Transactional(readOnly = true)
+    public PaymentSummaryResponse getPaymentSummary(UUID eventId) {
+
+        // Verify event exists
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new ResourceNotFoundException("Event not found: " + eventId));
+
+        // One DB call: aggregates per status
+        List<Object[]> aggregates = registrationRepository.getPaymentAggregatesByEventId(eventId);
+
+        // Initialise counters
+        long confirmedCount      = 0;
+        long payAtGateCount      = 0;
+        long freeCount           = 0;
+        long complimentaryCount  = 0;
+        long pendingCount        = 0;
+        long failedCount         = 0;
+        long totalRegistrations  = 0;
+
+        BigDecimal totalRevenue          = BigDecimal.ZERO;
+        BigDecimal pendingGateCollection = BigDecimal.ZERO;
+        BigDecimal complimentaryWaived   = BigDecimal.ZERO;
+
+        // Walk the aggregation rows
+        for (Object[] row : aggregates) {
+            String status         = (String) row[0];
+            long   regCount       = ((Number) row[1]).longValue();
+            BigDecimal amount     = new BigDecimal(row[3].toString());
+
+            totalRegistrations += regCount;
+
+            PaymentStatus ps = PaymentStatus.valueOf(status);
+            switch (ps) {
+                case CONFIRMED     -> { confirmedCount     = regCount; totalRevenue          = totalRevenue.add(amount); }
+                case PAY_AT_GATE   -> { payAtGateCount     = regCount; pendingGateCollection = pendingGateCollection.add(amount); }
+                case FREE          -> { freeCount          = regCount; }
+                case COMPLIMENTARY -> { complimentaryCount = regCount; complimentaryWaived   = complimentaryWaived.add(amount); }
+                case PENDING       -> { pendingCount       = regCount; }
+                case FAILED        -> { failedCount        = regCount; }
+            }
+        }
+
+        // Locked seats = CONFIRMED + FREE + PAY_AT_GATE + COMPLIMENTARY (in TICKETS)
+        int seatsLocked    = registrationRepository.sumLockedTicketsForEvent(eventId);
+        int seatsRemaining = Math.max(0, event.getTotalCapacity() - seatsLocked);
+
+        // Check-in stats — BOOKING level (how many members/registrations have arrived)
+        long checkedInCount    = registrationRepository.countCheckedInForEvent(eventId);
+        // Locked bookings = confirmedCount + payAtGateCount + freeCount + complimentaryCount
+        long lockedBookings    = confirmedCount + payAtGateCount + freeCount + complimentaryCount;
+        long notCheckedInCount = Math.max(0, lockedBookings - checkedInCount);
+
+        // Check-in stats — TICKET level (comparable to seatsLocked, which is also in tickets)
+        long checkedInTickets    = registrationRepository.sumCheckedInTicketsForEvent(eventId);
+        long notCheckedInTickets = Math.max(0, seatsLocked - checkedInTickets);
+
+        log.info("Admin payment summary for event '{}': {} locked seats, {} checked-in bookings, {} checked-in tickets, revenue={}",
+                event.getTitle(), seatsLocked, checkedInCount, checkedInTickets, totalRevenue);
+
+        return PaymentSummaryResponse.builder()
+                .totalCapacity(event.getTotalCapacity())
+                .seatsLocked(seatsLocked)
+                .seatsRemaining(seatsRemaining)
+                .confirmedCount(confirmedCount)
+                .payAtGateCount(payAtGateCount)
+                .freeCount(freeCount)
+                .complimentaryCount(complimentaryCount)
+                .pendingCount(pendingCount)
+                .failedCount(failedCount)
+                .totalRegistrations(totalRegistrations)
+                .checkedInCount(checkedInCount)
+                .notCheckedInCount(notCheckedInCount)
+                .checkedInTickets(checkedInTickets)
+                .notCheckedInTickets(notCheckedInTickets)
+                .totalRevenue(totalRevenue)
+                .pendingGateCollection(pendingGateCollection)
+                .complimentaryWaived(complimentaryWaived)
                 .build();
     }
 }

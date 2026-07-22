@@ -100,6 +100,40 @@ public class EventController {
     }
 
     /**
+     * GET /api/admin/events/{eventId}/registrations
+     *
+     * Returns the full list of registrations for a specific event.
+     * Each row includes member ID, quantity, payment status, check-in status, and booked-at timestamp.
+     * Ordered by booking time (newest first).
+     *
+     * Access: ADMIN and STAFF
+     */
+    @GetMapping("/api/admin/events/{eventId}/registrations")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
+    public ResponseEntity<List<RegistrationSummaryResponse>> getEventRegistrations(
+            @PathVariable UUID eventId) {
+        return ResponseEntity.ok(eventService.getRegistrationsForEvent(eventId));
+    }
+
+    /**
+     * GET /api/admin/events/{eventId}/payment-summary
+     *
+     * Returns a financial and capacity snapshot for a single event:
+     *  - Seat availability (locked vs remaining)
+     *  - Registration counts broken down by payment status
+     *  - Gate check-in statistics (checked-in vs not-yet-arrived)
+     *  - Revenue collected vs pending gate collection vs complimentary waivers
+     *
+     * Access: ADMIN and STAFF
+     */
+    @GetMapping("/api/admin/events/{eventId}/payment-summary")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
+    public ResponseEntity<PaymentSummaryResponse> getPaymentSummary(
+            @PathVariable UUID eventId) {
+        return ResponseEntity.ok(eventService.getPaymentSummary(eventId));
+    }
+
+    /**
      * POST /api/events/{id}/banner
      * Uploads a banner image for an event to S3.
      * The returned S3 URL is saved to the event's bannerUrl field.
