@@ -817,6 +817,77 @@ GET /api/admin/events/{eventId}/payment-summary
 
 ---
 
+### 3. Admin Dashboard
+
+Returns a platform-wide snapshot across all events in a single call — event status breakdown, all-time registration and revenue figures, and this-month stats. Designed to power an admin/staff home screen.
+
+```
+GET /api/admin/dashboard
+```
+
+**Access:** ADMIN or STAFF
+
+No request body or query parameters needed.
+
+**Success Response `200 OK`:**
+
+```json
+{
+  "totalEvents": 12,
+  "publishedEvents": 3,
+  "upcomingEvents": 2,
+  "draftEvents": 4,
+  "completedEvents": 4,
+  "cancelledEvents": 1,
+
+  "totalRegistrations": 480,
+  "lockedRegistrations": 445,
+  "totalTicketsSold": 620,
+
+  "registrationsThisMonth": 85,
+  "ticketsSoldThisMonth": 115,
+
+  "totalRevenue": 440000.00,
+  "pendingGateCollection": 35000.00,
+  "complimentaryWaived": 5000.00,
+
+  "revenueThisMonth": 82000.00
+}
+```
+
+**Response Fields Explained:**
+
+| Field | Unit | Notes |
+|---|---|---|
+| `totalEvents` | Events | All events in the system, every status |
+| `publishedEvents` | Events | Events currently in `PUBLISHED` status |
+| `upcomingEvents` | Events | `PUBLISHED` events with `eventDate >= today` |
+| `draftEvents` | Events | Events in `DRAFT` (not yet live) |
+| `completedEvents` | Events | Events marked `COMPLETED` |
+| `cancelledEvents` | Events | Events marked `CANCELLED` |
+| `totalRegistrations` | Bookings | All registration rows in the DB (every status) |
+| `lockedRegistrations` | Bookings | `CONFIRMED + FREE + PAY_AT_GATE + COMPLIMENTARY` bookings (hold a seat) |
+| `totalTicketsSold` | Tickets | Sum of `quantity` across all locked registrations |
+| `registrationsThisMonth` | Bookings | All registrations created in the current calendar month (1st to today) |
+| `ticketsSoldThisMonth` | Tickets | Sum of `quantity` for locked registrations created this month |
+| `totalRevenue` | Money (₹) | Sum of `totalAmount` for all `CONFIRMED` registrations (online payments collected) |
+| `pendingGateCollection` | Money (₹) | Sum of `totalAmount` for `PAY_AT_GATE` registrations (cash not yet collected) |
+| `complimentaryWaived` | Money (₹) | Sum of `totalAmount` for `COMPLIMENTARY` registrations (fees waived by staff) |
+| `revenueThisMonth` | Money (₹) | Sum of `totalAmount` for `CONFIRMED` registrations created this month |
+
+> **Note on "this month":** All `*ThisMonth` fields are scoped to the current **calendar month** from the 1st at midnight to the current moment. They reset on the 1st of every new month automatically.
+
+> **Note on `upcomingEvents` vs `publishedEvents`:** `publishedEvents` includes all live events regardless of date (some may have already happened but not yet been marked `COMPLETED`). `upcomingEvents` is the subset where `eventDate >= today`.
+
+**Error Responses:**
+
+| HTTP | Scenario |
+|---|---|
+| `401 Unauthorized` | JWT missing or expired |
+| `403 Forbidden` | Non-ADMIN/STAFF role |
+
+---
+
 ## Staff Operations API
 
 > **Access:** All endpoints in this section require a valid JWT with `STAFF` or `ADMIN` role.

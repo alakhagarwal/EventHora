@@ -88,6 +88,23 @@ public class EventController {
     }
 
     /**
+     * GET /api/admin/dashboard
+     *
+     * Returns a cross-event platform snapshot:
+     *  - Event counts by status (published, upcoming, draft, completed, cancelled)
+     *  - All-time registration and ticket counts
+     *  - All-time revenue (collected, pending gate, complimentary waivers)
+     *  - This-month registration and revenue stats
+     *
+     * Access: ADMIN and STAFF
+     */
+    @GetMapping("/api/admin/dashboard")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
+    public ResponseEntity<DashboardResponse> getDashboard() {
+        return ResponseEntity.ok(eventService.getDashboard());
+    }
+
+    /**
      * GET /api/admin/events/{id}
      * Returns the full details of a single event regardless of its status.
      * Use this before making a PATCH update call so you know the current values.
