@@ -3,6 +3,7 @@ package com.eventHora.backend.controller;
 import com.eventHora.backend.dto.ConfirmPaymentRequest;
 import com.eventHora.backend.dto.InitiateBookingRequest;
 import com.eventHora.backend.dto.InitiateBookingResponse;
+import com.eventHora.backend.dto.MyBookingResponse;
 import com.eventHora.backend.dto.RegistrationResponse;
 import com.eventHora.backend.dto.VerifyMemberRequest;
 import com.eventHora.backend.dto.VerifyMemberResponse;
@@ -11,10 +12,14 @@ import com.eventHora.backend.service.RegistrationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/registration")
@@ -86,6 +91,27 @@ public class RegistrationController {
     public ResponseEntity<RegistrationResponse> confirmPayment(
             @Valid @RequestBody ConfirmPaymentRequest request) {
         return ResponseEntity.ok(registrationService.confirmPayment(request));
+    }
+
+    /**
+     * GET /api/registration/my-bookings?sessionToken={token}
+     *
+     * Returns the calling member's complete booking history across all events.
+     * Results are ordered newest first (most recent booking at index 0).
+     *
+     * The sessionToken is required and is resolved to a memberId server-side.
+     * The memberId is NEVER accepted directly as a parameter — the session is the
+     * only trusted source to prevent a member from viewing another member's bookings.
+     *
+     * All statuses are included (CONFIRMED, FREE, PAY_AT_GATE, PENDING, FAILED, COMPLIMENTARY)
+     * so the member can see their full history, not just successful bookings.
+     *
+     * Access: PUBLIC (guarded by sessionToken)
+     */
+    @GetMapping("/my-bookings")
+    public ResponseEntity<List<MyBookingResponse>> getMyBookings(
+            @RequestParam String sessionToken) {
+        return ResponseEntity.ok(registrationService.getMyBookings(sessionToken));
     }
 }
 

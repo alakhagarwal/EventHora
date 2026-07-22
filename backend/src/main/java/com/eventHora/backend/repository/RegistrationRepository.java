@@ -50,6 +50,18 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
      */
     Optional<Registration> findByRazorpayOrderId(String razorpayOrderId);
 
+    // ─── Phase 8A: Member Self-Service (My Bookings) ──────────────────────────
+
+    /**
+     * Returns all registrations for a given member, ordered by booking time (newest first).
+     * Used by GET /api/registration/my-bookings.
+     *
+     * The LAZY Event association is safe to traverse inside a @Transactional service method.
+     * Results include ALL statuses — PENDING, FAILED included — so the member can see their
+     * full history, not just successful bookings.
+     */
+    List<Registration> findByMemberIdOrderByBookedAtDesc(String memberId);
+
     // ─── Phase 7A: Admin Registration List ────────────────────────────────────
 
     /**

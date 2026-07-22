@@ -1575,3 +1575,93 @@ This endpoint **always** returns `200 OK` with body `"ok"`, even on internal err
 | `paymentStatus` | `PENDING` | `FAILED` |
 
 ---
+
+## Member Self-Service API
+
+> **Access:** These endpoints are PUBLIC but are guarded by a `sessionToken`.
+> The member must first call `POST /api/registration/verify-member` to obtain a valid `sessionToken` before using any endpoint in this section.
+
+---
+
+### 1. My Bookings
+
+Returns the complete booking history for the authenticated member across all events. Ordered newest first.
+
+```
+GET /api/registration/my-bookings?sessionToken={token}
+```
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Notes |
+|---|---|---|---|
+| `sessionToken` | String | ✅ | The token from `verify-member`. Valid for 1 hour. |
+
+> **Security note:** The `memberId` is **never** accepted as a query parameter. The session token is the only trusted source of truth, preventing a member from viewing another member's bookings by guessing their ID.
+
+**Success Response `200 OK`:**
+
+Returns an array of bookings. An empty array `[]` is returned if the member has no bookings yet.
+
+```json
+[
+  {
+    "ticketReference": "TKT-2026-AB12CD",
+    "quantity": 2,
+    "totalAmount": 2000.00,
+    "paymentStatus": "CONFIRMED",
+    "paymentPreference": "ONLINE",
+    "isCheckedIn": true,
+    "checkedInAt": "2026-07-08T18:35:22",
+    "eventTitle": "Mere Mehboob Na Ja…",
+    "eventDate": "2026-07-08",
+    "eventStartTime": "18:30:00",
+    "eventVenue": "Main Audi, RIC",
+    "eventUniqueLink": "mere-mehboob-na-ja",
+    "bookedAt": "2026-07-05T10:30:00"
+  },
+  {
+    "ticketReference": "TKT-2026-XY9Z01",
+    "quantity": 1,
+    "totalAmount": 500.00,
+    "paymentStatus": "FAILED",
+    "paymentPreference": "ONLINE",
+    "isCheckedIn": false,
+    "checkedInAt": null,
+    "eventTitle": "Navratri Gala 2026",
+    "eventDate": "2026-10-02",
+    "eventStartTime": "19:00:00",
+    "eventVenue": "RIC Convention Hall",
+    "eventUniqueLink": "navratri-gala-2026",
+    "bookedAt": "2026-09-25T14:20:00"
+  }
+]
+```
+
+**Response Fields:**
+
+| Field | Type | Notes |
+|---|---|---|
+| `ticketReference` | String | The member's booking ID (e.g. `TKT-2026-AB12CD`) |
+| `quantity` | Integer | Number of tickets booked |
+| `totalAmount` | Decimal | Total amount charged for this booking |
+| `paymentStatus` | String | `CONFIRMED`, `FREE`, `PAY_AT_GATE`, `COMPLIMENTARY`, `PENDING`, `FAILED` |
+| `paymentPreference` | String | `ONLINE` or `PAY_AT_GATE` |
+| `isCheckedIn` | Boolean | `true` if the member has been scanned at the gate |
+| `checkedInAt` | DateTime | Gate check-in timestamp — `null` if not yet checked in |
+| `eventTitle` | String | Event name |
+| `eventDate` | Date | Event date (`YYYY-MM-DD`) |
+| `eventStartTime` | Time | Event start time (`HH:mm:ss`) |
+| `eventVenue` | String | Primary venue of the event |
+| `eventUniqueLink` | String | Slug for linking to the event detail page |
+| `bookedAt` | DateTime | When this booking was created |
+
+> **All statuses are returned.** `FAILED` and `PENDING` bookings are included so the member can see their full history and understand what happened to each payment attempt.
+
+**Error Responses:**
+
+| HTTP | Scenario |
+|---|---|
+| `401 Unauthorized` | `sessionToken` is expired, invalid, or missing |
+
+---
