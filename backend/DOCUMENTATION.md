@@ -1291,6 +1291,106 @@ For `PAY_AT_GATE`, the member hasn't paid yet. If the QR scan admitted them befo
 
 
 
+### 3. Ticket Lookup (Manual Fallback)
+
+Pure read-only lookup of a single ticket by its reference. **Does not check the member in or change any data.**
+
+Used when QR scanning fails — staff types the ticket reference manually to view the booking details before deciding which action to take.
+
+```
+GET /api/staff/lookup?ticketReference=TKT-2026-AB12CD
+```
+
+**Access:** STAFF, ADMIN
+
+**Query Parameter:**
+
+| Parameter | Type | Required | Notes |
+|---|---|---|---|
+| `ticketReference` | String | ✅ | The ticket reference (e.g. `TKT-2026-AB12CD`). Pass as a query param, not in the body. |
+
+No request body needed.
+
+---
+
+#### Success Response `200 OK`
+
+```json
+{
+  "registrationId": "d4e5f6a7-...",
+  "ticketReference": "TKT-2026-AB12CD",
+  "memberId": "RIC-2024-04512",
+  "memberType": "INDIAN",
+  "quantity": 2,
+  "totalAmount": 2000.00,
+  "paymentStatus": "PAY_AT_GATE",
+  "paymentPreference": "AT_GATE",
+  "isCheckedIn": false,
+  "checkedInAt": null,
+  "bookedAt": "2026-07-05T10:30:00"
+}
+```
+
+**Response Fields:**
+
+| Field | Notes |
+|---|---|
+| `registrationId` | Internal UUID of the booking |
+| `ticketReference` | The user-facing ticket ID |
+| `memberId` | The RIC Member ID |
+| `memberType` | `INDIAN` or `OVERSEAS` |
+| `quantity` | Number of tickets on this booking |
+| `totalAmount` | Amount owed (0.00 for FREE/COMPLIMENTARY) |
+| `paymentStatus` | Current status — see table below for what to do next |
+| `paymentPreference` | How the member chose to pay |
+| `isCheckedIn` | `true` if already admitted |
+| `checkedInAt` | Timestamp of admission, or `null` |
+| `bookedAt` | When the booking was created |
+
+---
+
+#### What to do based on `paymentStatus`
+
+| `paymentStatus` returned | What staff should do next |
+|---|---|
+| `CONFIRMED` | Call `POST /api/staff/checkin` to admit the member |
+| `FREE` | Call `POST /api/staff/checkin` to admit the member |
+| `COMPLIMENTARY` | Call `POST /api/staff/checkin` to admit the member |
+| `PAY_AT_GATE` | Collect payment, then call `POST /api/staff/record-payment` |
+| `PENDING` | Reject entry — member's online payment was never completed |
+| `FAILED` | Reject entry — payment failed; no valid booking exists |
+
+---
+
+#### Error Responses
+
+| HTTP | Scenario |
+|---|---|
+| `404 Not Found` | Ticket reference does not exist |
+| `401 Unauthorized` | JWT missing or expired |
+| `403 Forbidden` | Caller does not have STAFF or ADMIN role |
+
+---
+
+#### Postman Testing Guide
+
+```
+GET /api/staff/lookup?ticketReference=TKT-2026-AB12CD
+Authorization: Bearer <staff-or-admin-token>
+```
+
+No body needed. The reference goes in the URL as a query parameter.
+
+Test cases:
+- ✅ Valid ticket → `200 OK` with all details
+- ❌ Wrong reference → `404 Not Found`
+- ❌ No token → `401 Unauthorized`
+- ❌ Member JWT (non-staff) → `403 Forbidden`
+
+---
+
+
+
 ## Member Registration API
 
 > **Access:** These endpoints are PUBLIC but are used exclusively for member ticketing.
