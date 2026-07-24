@@ -888,6 +888,173 @@ No request body or query parameters needed.
 
 ---
 
+---
+
+## Admin Booking API
+
+> **Access:** All endpoints in this section require a valid JWT with `ADMIN` or `STAFF` role.
+> Add `Authorization: Bearer <token>` to every request.
+
+These endpoints allow an admin or staff member to register a RIC member for an event **directly from the admin panel**, without the member needing to go through the OTP verification flow. Used for walk-in registrations, phone-in requests, or members who can't use the app.
+
+---
+
+### 1. Register a Member for an Event (Admin Booking)
+
+```
+POST /api/admin/bookings/register
+```
+
+**Access:** ADMIN or STAFF
+
+**Request Body (`application/json`):**
+```json
+{
+  "memberId": "RIC-2024-04512",
+  "memberType": "INDIAN",
+  "eventId": "550e8400-e29b-41d4-a716-446655440000",
+  "quantity": 2,
+  "action": "PAY_AT_GATE"
+}
+```
+
+**Request Fields:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `memberId` | String | ✅ | RIC Member ID. Must start with `RIC` (validated against the mock RIC API) |
+| `memberType` | String | ✅ | `INDIAN` or `OVERSEAS` |
+| `eventId` | UUID | ✅ | The event to register for |
+| `quantity` | Integer | ✅ | Minimum 1, max = `event.maxTicketsPerMember` |
+| `action` | String | ✅ | `PAY_AT_GATE` or `COMPLIMENTARY`. See payment logic below. |
+
+> **No `ONLINE` option.** Admin bookings never go through Razorpay. There are only two choices for paid events.
+
+---
+
+#### Payment Logic (Automatic — based on `ticketPrice` and `action`)
+
+| Event type | `action` sent | Result |
+|---|---|---|
+| Free event (`ticketPrice == 0`) | Ignored | `paymentStatus = FREE`, `totalAmount = 0.00` |
+| Paid event | `PAY_AT_GATE` | `paymentStatus = PAY_AT_GATE`, `totalAmount = paidTickets × ticketPrice` |
+| Paid event | `COMPLIMENTARY` | `paymentStatus = COMPLIMENTARY`, `totalAmount = 0.00` |
+
+- **`PAY_AT_GATE`**: The member still owes money. Staff collects cash or card at the venue on event day. This booking will appear in the gate check-in queue and must go through `POST /api/staff/record-payment` to be admitted.
+- **`COMPLIMENTARY`**: The admin has waived the fee. The member can attend for free and will be admitted directly via `POST /api/staff/checkin`.
+
+---
+
+**Success Response `200 OK`:**
+```json
+{
+  "ticketReference": "TKT-2026-GH34JK",
+  "quantity": 2,
+  "totalAmount": 2000.00,
+  "paymentStatus": "PAY_AT_GATE",
+  "memberId": "RIC-2024-04512",
+  "eventTitle": "Mere Mehboob Na Ja…",
+  "eventDate": "2026-07-08",
+  "eventStartTime": "18:30:00",
+  "eventVenue": "Main Audi, RIC",
+  "bookedBy": "admin@ric.org",
+  "bookedAt": "2026-07-24T22:45:00"
+}
+```
+
+**Response Fields:**
+
+| Field | Type | Notes |
+|---|---|---|
+| `ticketReference` | String | The booking's unique ticket ID — same format as member-self-service bookings |
+| `quantity` | Integer | Number of tickets booked |
+| `totalAmount` | Decimal | `0.00` for FREE or COMPLIMENTARY, calculated price for PAY_AT_GATE |
+| `paymentStatus` | String | `FREE`, `PAY_AT_GATE`, or `COMPLIMENTARY` |
+| `memberId` | String | The member who was registered |
+| `eventTitle` | String | Name of the event |
+| `eventDate` | Date | `YYYY-MM-DD` |
+| `eventStartTime` | Time | `HH:mm:ss` |
+| `eventVenue` | String | Primary venue |
+| `bookedBy` | String | Email of the admin/staff who created this booking (audit trail) |
+| `bookedAt` | DateTime | When the booking was created |
+
+---
+
+#### Guards (All enforced before saving):
+
+| Check | Error if fails |
+|---|---|
+| `memberId` starts with `RIC` | `400 Bad Request` |
+| Event exists | `404 Not Found` |
+| Event status is `PUBLISHED` | `400 Bad Request` |
+| Registration deadline not passed | `400 Bad Request` |
+| `quantity` ≤ `maxTicketsPerMember` | `400 Bad Request` |
+| Enough seats available | `400 Bad Request` |
+| No existing registration for this member + event | `409 Conflict` |
+
+> **Duplicate booking note:** Unlike the member self-service flow (which silently overwrites a FAILED row to allow retries), admin bookings **always reject** if any registration already exists for the member + event. The admin should check `GET /api/admin/events/{eventId}/registrations` first if unsure.
+
+---
+
+#### Error Responses:
+
+| HTTP | Scenario |
+|---|---|
+| `400 Bad Request` | Invalid memberId, event not published, deadline passed, quantity over limit, or sold out |
+| `404 Not Found` | Event ID does not exist |
+| `409 Conflict` | A registration already exists for this member + event |
+| `401 Unauthorized` | JWT missing or expired |
+| `403 Forbidden` | Caller does not have ADMIN or STAFF role |
+
+---
+
+#### Postman Testing Guide
+
+**Step 1** — Log in as admin and copy the JWT:
+```
+POST /api/auth/login
+{
+  "email": "admin@ric.org",
+  "password": "yourpassword"
+}
+```
+Copy the `token` from the response.
+
+**Step 2** — Create a booking:
+```
+POST /api/admin/bookings/register
+Authorization: Bearer <token>
+
+{
+  "memberId": "RIC-2024-04512",
+  "memberType": "INDIAN",
+  "eventId": "<paste-event-uuid>",
+  "quantity": 1,
+  "action": "PAY_AT_GATE"
+}
+```
+Expected response: `200 OK` with the ticket details.
+
+**Step 3 — Test PAY_AT_GATE path** (as above):
+- Staff can now scan the ticket reference via `POST /api/staff/record-payment` to collect payment and check the member in.
+
+**Step 4 — Test COMPLIMENTARY path:**
+```json
+{ "action": "COMPLIMENTARY" }
+```
+Expected: `paymentStatus = COMPLIMENTARY`, `totalAmount = 0.00`.
+- Staff can now admit this member directly via `POST /api/staff/checkin`.
+
+**Step 5 — Test FREE event path:**
+- Use an event where `ticketPrice = 0`. `action` field is still required in JSON but is ignored.
+Expected: `paymentStatus = FREE`, `totalAmount = 0.00`.
+
+**Step 6 — Test duplicate guard:**
+- Call `POST /api/admin/bookings/register` again with the same `memberId` + `eventId`.
+Expected: `409 Conflict`.
+
+---
+
 ## Staff Operations API
 
 > **Access:** All endpoints in this section require a valid JWT with `STAFF` or `ADMIN` role.
