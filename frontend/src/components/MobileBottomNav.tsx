@@ -65,6 +65,17 @@ function LoginIcon({ active }: { active: boolean }) {
   );
 }
 
+function ScanIcon({ active }: { active: boolean }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round"
+      className="h-5 w-5">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+      <circle cx="12" cy="13" r="4" />
+    </svg>
+  );
+}
+
 /* ── Nav item type ── */
 type NavItem = {
   label: string;
@@ -80,6 +91,10 @@ function getNavItems(session: Session, hasMemberSession: boolean): NavItem[] {
     { label: "Events", href: "/events", icon: CalendarIcon, matchPaths: ["/events"] },
   ];
 
+  if (session?.role === "ADMIN" || session?.role === "STAFF") {
+    items.push({ label: "Scanner", href: "/staff", icon: ScanIcon, matchPaths: ["/staff"] });
+  }
+
   if (session?.role === "ADMIN") {
     items.push({ label: "Users", href: "/admin/users", icon: UsersIcon, matchPaths: ["/admin/users"] });
     items.push({ label: "Profile", href: "/profile", icon: UserIcon, matchPaths: ["/profile"] });
@@ -93,6 +108,7 @@ function getNavItems(session: Session, hasMemberSession: boolean): NavItem[] {
 
   return items;
 }
+
 
 export default function MobileBottomNav() {
   const [session, setSession] = useState<Session>(null);

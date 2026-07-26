@@ -55,10 +55,7 @@ export default function Landing() {
             {loggedIn ? (
               <button onClick={logout} className="btn-outline bg-transparent border-white/30 text-white hover:bg-white/10">Logout</button>
             ) : (
-              <>
-                <Link href="/login" className="btn-outline bg-transparent border-white/30 text-white hover:bg-white/10">Admin / Staff Login</Link>
-                <Link href="/login" className="btn-ghost text-white hover:bg-white/10">Member Login →</Link>
-              </>
+              <Link href="/login" className="btn-outline bg-transparent border-white/30 text-white hover:bg-white/10">Login</Link>
             )}
           </div>
           <div className="mt-10 md:mt-14 grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 max-w-3xl mx-auto">

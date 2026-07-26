@@ -42,3 +42,12 @@ export function clearMemberSession() {
 export function isLoggedIn(): boolean {
   return !!getSession() || !!getMemberSession();
 }
+
+export function requireStaffAuth(): Session {
+  const session = getSession();
+  if (!session || (session.role !== "STAFF" && session.role !== "ADMIN")) {
+    return null;
+  }
+  return session;
+}
+

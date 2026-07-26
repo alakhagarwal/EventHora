@@ -1,3 +1,5 @@
+import type { CheckInResponse } from "@/types/staff";
+
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 
@@ -7,7 +9,7 @@ export type RegistrationResponse = {
   ticketReference: string;
   eventTitle: string;
   quantity: number;
-  totalAmount: string;
+  totalAmount: number;
   paymentStatus: "FREE" | "COMPLIMENTARY" | "PAY_AT_GATE" | "PENDING" | "CONFIRMED";
   razorpayOrderId?: string;
 };
@@ -39,8 +41,11 @@ export async function apiFetch<T = any>(path: string, opts: Options = {}): Promi
   const text = await res.text();
   const data = text ? (() => { try { return JSON.parse(text); } catch { return text; } })() : null;
   if (!res.ok) {
-    const msg = (data && typeof data === "object" && data.error) || res.statusText || "Request failed";
-    throw new Error(msg);
+    const msg = (data && typeof data === "object" && (data.message || data.error)) || res.statusText || "Request failed";
+    const err: any = new Error(msg);
+    err.status = res.status;
+    err.data = data;
+    throw err;
   }
   return data as T;
 }
@@ -107,4 +112,17 @@ export const api = {
     razorpaySignature: string;
   }) =>
     apiFetch<RegistrationResponse>("/api/registration/confirm-payment", { method: "POST", json: body, auth: false }),
+
+  checkIn: (body: { ticketReference: string }) =>
+    apiFetch<CheckInResponse>("/api/staff/checkin", {
+      method: "POST",
+      json: body,
+    }),
+
+  recordGatePayment: (body: { ticketReference: string; action: "PAID" | "COMPLIMENTARY" }) =>
+    apiFetch<CheckInResponse>("/api/staff/record-payment", {
+      method: "POST",
+      json: body,
+    }),
 };
+

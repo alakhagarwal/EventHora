@@ -20,7 +20,7 @@ export default function ThankYouPage() {
     contactPersonPhone?: string | null;
     ticketReference?: string;
     quantity?: number;
-    totalAmount?: string;
+    totalAmount?: number;
     paymentStatus?: string;
   };
 
