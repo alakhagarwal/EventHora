@@ -14,6 +14,7 @@ import com.eventHora.backend.dto.MemberSession;
 import com.eventHora.backend.dto.MyBookingResponse;
 import com.eventHora.backend.dto.RecordPaymentRequest;
 import com.eventHora.backend.dto.RegistrationResponse;
+import com.eventHora.backend.dto.RegistrationSummaryResponse;
 import com.eventHora.backend.dto.VerifyMemberRequest;
 import com.eventHora.backend.dto.VerifyMemberResponse;
 import com.eventHora.backend.dto.VerifyOtpRequest;
@@ -968,4 +969,62 @@ public class RegistrationService {
                 .bookedAt(r.getBookedAt())
                 .build();
     }
+
+    // ─── Phase 6C: Staff Ticket Lookup ────────────────────────────────────────
+
+    /**
+     * GET /api/staff/lookup?ticketReference={ref}
+     *
+     * Pure read-only lookup — fetches all details for a single ticket by its
+     * human-readable reference (e.g. "TKT-2026-AB12CD").
+     *
+     * Used as a safe fallback when staff cannot scan the QR code (dirty QR,
+     * cracked screen, low battery). The staff member types the reference manually,
+     * this endpoint returns the booking details for visual verification, and the
+     * staff then calls the appropriate action endpoint (checkin or record-payment)
+     * only after confirming the member's identity.
+     *
+     * This method is intentionally read-only — it does NOT check the member in
+     * or change any state whatsoever.
+     *
+     * @Transactional(readOnly = true) is required because Registration.event is
+     * FetchType.LAZY and event fields are accessed during mapping.
+     */
+    @Transactional(readOnly = true)
+    public RegistrationSummaryResponse lookupByTicketReference(String ticketReference) {
+
+        Registration registration = registrationRepository
+                .findByTicketReference(ticketReference)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Ticket not found: " + ticketReference));
+
+        log.info("[LOOKUP] Ticket {} looked up by staff (memberId={}, status={})",
+                ticketReference,
+                registration.getMemberId(),
+                registration.getPaymentStatus());
+
+        return toRegistrationSummaryResponse(registration);
+    }
+
+    /**
+     * Maps a Registration entity to RegistrationSummaryResponse.
+     * Used by the staff ticket lookup. Must be called within a @Transactional
+     * context because Registration.event is a LAZY association.
+     */
+    private RegistrationSummaryResponse toRegistrationSummaryResponse(Registration r) {
+        return RegistrationSummaryResponse.builder()
+                .registrationId(r.getId())
+                .ticketReference(r.getTicketReference())
+                .memberId(r.getMemberId())
+                .memberType(r.getMemberType())
+                .quantity(r.getQuantity())
+                .totalAmount(r.getTotalAmount())
+                .paymentStatus(r.getPaymentStatus())
+                .paymentPreference(r.getPaymentPreference())
+                .isCheckedIn(r.isCheckedIn())
+                .checkedInAt(r.getCheckedInAt())
+                .bookedAt(r.getBookedAt())
+                .build();
+    }
+
 }

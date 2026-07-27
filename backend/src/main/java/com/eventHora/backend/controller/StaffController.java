@@ -3,6 +3,7 @@ package com.eventHora.backend.controller;
 import com.eventHora.backend.dto.CheckInRequest;
 import com.eventHora.backend.dto.CheckInResponse;
 import com.eventHora.backend.dto.RecordPaymentRequest;
+import com.eventHora.backend.dto.RegistrationSummaryResponse;
 import com.eventHora.backend.service.RegistrationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -69,5 +70,33 @@ public class StaffController {
     @PreAuthorize("hasAnyRole('STAFF', 'ADMIN')")
     public ResponseEntity<CheckInResponse> recordPayment(@Valid @RequestBody RecordPaymentRequest request) {
         return ResponseEntity.ok(registrationService.recordGatePayment(request));
+    }
+
+    /**
+     * GET /api/staff/lookup?ticketReference={ref}
+     *
+     * Pure read-only ticket lookup by ticket reference.
+     *
+     * Used as a manual fallback when QR scanning fails (dirty QR, cracked screen,
+     * low battery, printed ticket smudge). Staff types the reference (e.g.
+     * "TKT-2026-AB12CD") and this endpoint returns the full booking details for
+     * visual verification — member ID, quantity, payment status, check-in status.
+     *
+     * This endpoint does NOT check the member in or modify any data.
+     * After verifying the member's identity, staff then calls:
+     *   - POST /api/staff/checkin        (if status is CONFIRMED / FREE / COMPLIMENTARY)
+     *   - POST /api/staff/record-payment (if status is PAY_AT_GATE)
+     *
+     * Outcomes:
+     *  - 200 OK        → Ticket found, details returned ✅
+     *  - 404 Not Found → Ticket reference does not exist
+     *
+     * Access: STAFF, ADMIN
+     */
+    @GetMapping("/lookup")
+    @PreAuthorize("hasAnyRole('STAFF', 'ADMIN')")
+    public ResponseEntity<RegistrationSummaryResponse> lookupTicket(
+            @RequestParam String ticketReference) {
+        return ResponseEntity.ok(registrationService.lookupByTicketReference(ticketReference));
     }
 }

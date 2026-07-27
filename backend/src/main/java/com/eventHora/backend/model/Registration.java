@@ -80,7 +80,7 @@ public class Registration {
 
     // ─── Gate Check-In ────────────────────────────────────────────────────────
 
-    @Column(nullable = false)
+    @Column(name = "is_checked_in", nullable = false)
     @Builder.Default
     private boolean isCheckedIn = false;   // Flipped to true when staff scans QR at the gate
 
