@@ -179,4 +179,26 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
         nativeQuery = true
     )
     List<Object[]> getMonthlyPaymentAggregates(@Param("startOfMonth") java.time.LocalDateTime startOfMonth);
+    // ─── Schedulers ───────────────────────────────────────────────────────────
+
+    /**
+     * Finds all PENDING registrations whose bookedAt timestamp is older than `cutoff`.
+     *
+     * These are Razorpay orders where the member opened the payment popup but
+     * never completed the payment and the webhook never fired (e.g. browser crash,
+     * app killed). We expire them after a configurable window so that their seats
+     * are released back into the available pool.
+     *
+     * Used by PendingPaymentExpiryScheduler.
+     */
+    @Query(
+        value = """
+            SELECT r.*
+            FROM registrations r
+            WHERE r.payment_status = 'PENDING'
+              AND r.booked_at < :cutoff
+            """,
+        nativeQuery = true
+    )
+    List<Registration> findStalePendingRegistrations(@Param("cutoff") java.time.LocalDateTime cutoff);
 }

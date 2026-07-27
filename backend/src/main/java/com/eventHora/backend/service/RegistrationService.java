@@ -1026,4 +1026,5 @@ public class RegistrationService {
                 .bookedAt(r.getBookedAt())
                 .build();
     }
+
 }

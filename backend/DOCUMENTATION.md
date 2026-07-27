@@ -1931,4 +1931,105 @@ Returns an array of bookings. An empty array `[]` is returned if the member has 
 |---|---|
 | `401 Unauthorized` | `sessionToken` is expired, invalid, or missing |
 
+| `401 Unauthorized` | `sessionToken` is expired, invalid, or missing |
+
 ---
+
+## Background Schedulers
+
+These are background jobs that run automatically inside the server — they require no API calls and are not triggered by any user action.
+
+> **Note:** WhatsApp/email notification-based schedulers (e.g. reminders before an event) are planned but not yet implemented. They will be added when the notification service integration is complete.
+
+---
+
+### 1. Event Auto-Completion Scheduler
+
+**File:** `EventCompletionScheduler.java`
+
+**What it does:** Every night at **00:15 AM**, the system scans for any `PUBLISHED` events whose `eventDate` is in the past and automatically marks them as `COMPLETED`.
+
+**Why it exists:** Admins often forget (or don't have time) to manually mark events as completed after they conclude. Without this, the dashboard's `completedEvents` count stays permanently at 0, and old events show up as "live" in the `PUBLISHED` state indefinitely.
+
+**Schedule:** `cron = "0 15 0 * * *"` — every day at 00:15 AM (server time).
+
+**Transition:**
+```
+PUBLISHED + eventDate < today → COMPLETED
+```
+
+**What it does NOT change:**
+- `CANCELLED` events — a cancelled event that passed its date stays `CANCELLED` (it was never held)
+- `DRAFT` events — not published, so not eligible for auto-completion
+- Events already in `COMPLETED` or `CANCELLED` — excluded by the query's `status = 'PUBLISHED'` filter
+
+**Idempotent:** ✅ Safe to run multiple times. Already-completed events are excluded by the query.
+
+**Log output (example):**
+```
+[SCHEDULER][EventCompletion] Found 2 PUBLISHED event(s) past their date. Marking as COMPLETED...
+[SCHEDULER][EventCompletion] Completing event 'Mere Mehboob Na Ja…' (id=..., date=2026-07-08)
+[SCHEDULER][EventCompletion] Completing event 'Kathak Dance Evening' (id=..., date=2026-07-15)
+[SCHEDULER][EventCompletion] Done. 2 event(s) marked as COMPLETED.
+```
+
+---
+
+### 2. Pending Payment Expiry Scheduler
+
+**File:** `PendingPaymentExpiryScheduler.java`
+
+**What it does:** Every **10 minutes**, the system scans for `PENDING` registrations that are older than **30 minutes** (configurable) and marks them as `FAILED`.
+
+**Why it exists:** When a member opens the Razorpay payment popup and then abandons it (closes the app, browser crash, navigates away), **Razorpay does NOT send a failure webhook**. The registration stays stuck in `PENDING` state forever, which:
+- Makes the member's booking history confusing — their booking looks "stuck" with no clear outcome.
+- Prevents the member from making a clean retry on the same event (the system finds the old row).
+
+By expiring stale `PENDING` rows to `FAILED`, the member's history is clear and a fresh booking can be started.
+
+**Schedule:** `fixedRate = 600,000 ms` (every 10 minutes, starting 10 minutes after app boot).
+
+**Expiry window:** Configured in `application.properties`:
+```properties
+scheduler.pending-expiry.minutes=30
+```
+
+**Transition:**
+```
+PENDING + bookedAt < (now - 30 minutes) → FAILED
+```
+
+**What it does NOT change:**
+- Fresh `PENDING` registrations (within the 30-minute window) — left alone so live in-flight payments aren't disrupted
+- Any other status (`CONFIRMED`, `FREE`, etc.) — excluded by the query's `payment_status = 'PENDING'` filter
+
+**Razorpay order:** The scheduler does NOT cancel the Razorpay order. Razorpay orders expire automatically after 15 minutes on their side. We only update our own database record.
+
+**Idempotent:** ✅ Safe to run multiple times. Once a row is `FAILED`, it's excluded by the query.
+
+**Log output (example):**
+```
+[SCHEDULER][PendingExpiry] Found 3 stale PENDING registration(s) older than 30 minutes. Expiring...
+[SCHEDULER][PendingExpiry] Expiring ticket=TKT-2026-AB12CD, member=RIC-2024-04512, event=..., bookedAt=2026-07-27T22:30:00
+[SCHEDULER][PendingExpiry] Done. 3 registration(s) expired to FAILED.
+```
+
+---
+
+### Scheduler Configuration Reference
+
+| Property | Default | Description |
+|---|---|---|
+| `scheduler.pending-expiry.minutes` | `30` | Minutes after which a PENDING registration is considered stale |
+
+> To change the expiry window, update `application.properties` and restart the server. No code change needed.
+
+---
+
+### Summary
+
+| Scheduler | File | Trigger | Action |
+|---|---|---|---|
+| Event Auto-Completion | `EventCompletionScheduler.java` | Daily at 00:15 AM | `PUBLISHED` past-date events → `COMPLETED` |
+| Pending Payment Expiry | `PendingPaymentExpiryScheduler.java` | Every 10 minutes | `PENDING` registrations older than 30 min → `FAILED` |
+

@@ -49,4 +49,27 @@ public interface EventRepository extends JpaRepository<Event, UUID> {
         nativeQuery = true
     )
     long countUpcomingEvents(@Param("today") LocalDate today);
+
+    // ─── Schedulers ───────────────────────────────────────────────────────────
+
+    /**
+     * Finds all PUBLISHED events whose eventDate is strictly before `today`.
+     *
+     * These are events that have already happened but were never manually marked
+     * as COMPLETED by an admin. The EventCompletionScheduler calls this nightly
+     * to auto-complete them so the dashboard's completedEvents count is accurate.
+     *
+     * CANCELLED events are intentionally excluded — a cancelled event that passed
+     * its date should stay CANCELLED, not become COMPLETED.
+     */
+    @Query(
+        value = """
+            SELECT e.*
+            FROM events e
+            WHERE e.status = 'PUBLISHED'
+              AND e.event_date < :today
+            """,
+        nativeQuery = true
+    )
+    List<Event> findPublishedEventsBeforeDate(@Param("today") LocalDate today);
 }
