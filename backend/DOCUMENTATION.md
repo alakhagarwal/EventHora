@@ -817,6 +817,244 @@ GET /api/admin/events/{eventId}/payment-summary
 
 ---
 
+### 3. Admin Dashboard
+
+Returns a platform-wide snapshot across all events in a single call — event status breakdown, all-time registration and revenue figures, and this-month stats. Designed to power an admin/staff home screen.
+
+```
+GET /api/admin/dashboard
+```
+
+**Access:** ADMIN or STAFF
+
+No request body or query parameters needed.
+
+**Success Response `200 OK`:**
+
+```json
+{
+  "totalEvents": 12,
+  "publishedEvents": 3,
+  "upcomingEvents": 2,
+  "draftEvents": 4,
+  "completedEvents": 4,
+  "cancelledEvents": 1,
+
+  "totalRegistrations": 480,
+  "lockedRegistrations": 445,
+  "totalTicketsSold": 620,
+
+  "registrationsThisMonth": 85,
+  "ticketsSoldThisMonth": 115,
+
+  "totalRevenue": 440000.00,
+  "pendingGateCollection": 35000.00,
+  "complimentaryWaived": 5000.00,
+
+  "revenueThisMonth": 82000.00
+}
+```
+
+**Response Fields Explained:**
+
+| Field | Unit | Notes |
+|---|---|---|
+| `totalEvents` | Events | All events in the system, every status |
+| `publishedEvents` | Events | Events currently in `PUBLISHED` status |
+| `upcomingEvents` | Events | `PUBLISHED` events with `eventDate >= today` |
+| `draftEvents` | Events | Events in `DRAFT` (not yet live) |
+| `completedEvents` | Events | Events marked `COMPLETED` |
+| `cancelledEvents` | Events | Events marked `CANCELLED` |
+| `totalRegistrations` | Bookings | All registration rows in the DB (every status) |
+| `lockedRegistrations` | Bookings | `CONFIRMED + FREE + PAY_AT_GATE + COMPLIMENTARY` bookings (hold a seat) |
+| `totalTicketsSold` | Tickets | Sum of `quantity` across all locked registrations |
+| `registrationsThisMonth` | Bookings | All registrations created in the current calendar month (1st to today) |
+| `ticketsSoldThisMonth` | Tickets | Sum of `quantity` for locked registrations created this month |
+| `totalRevenue` | Money (₹) | Sum of `totalAmount` for all `CONFIRMED` registrations (online payments collected) |
+| `pendingGateCollection` | Money (₹) | Sum of `totalAmount` for `PAY_AT_GATE` registrations (cash not yet collected) |
+| `complimentaryWaived` | Money (₹) | Sum of `totalAmount` for `COMPLIMENTARY` registrations (fees waived by staff) |
+| `revenueThisMonth` | Money (₹) | Sum of `totalAmount` for `CONFIRMED` registrations created this month |
+
+> **Note on "this month":** All `*ThisMonth` fields are scoped to the current **calendar month** from the 1st at midnight to the current moment. They reset on the 1st of every new month automatically.
+
+> **Note on `upcomingEvents` vs `publishedEvents`:** `publishedEvents` includes all live events regardless of date (some may have already happened but not yet been marked `COMPLETED`). `upcomingEvents` is the subset where `eventDate >= today`.
+
+**Error Responses:**
+
+| HTTP | Scenario |
+|---|---|
+| `401 Unauthorized` | JWT missing or expired |
+| `403 Forbidden` | Non-ADMIN/STAFF role |
+
+---
+
+---
+
+## Admin Booking API
+
+> **Access:** All endpoints in this section require a valid JWT with `ADMIN` or `STAFF` role.
+> Add `Authorization: Bearer <token>` to every request.
+
+These endpoints allow an admin or staff member to register a RIC member for an event **directly from the admin panel**, without the member needing to go through the OTP verification flow. Used for walk-in registrations, phone-in requests, or members who can't use the app.
+
+---
+
+### 1. Register a Member for an Event (Admin Booking)
+
+```
+POST /api/admin/bookings/register
+```
+
+**Access:** ADMIN or STAFF
+
+**Request Body (`application/json`):**
+```json
+{
+  "memberId": "RIC-2024-04512",
+  "memberType": "INDIAN",
+  "eventId": "550e8400-e29b-41d4-a716-446655440000",
+  "quantity": 2,
+  "action": "PAY_AT_GATE"
+}
+```
+
+**Request Fields:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `memberId` | String | ✅ | RIC Member ID. Must start with `RIC` (validated against the mock RIC API) |
+| `memberType` | String | ✅ | `INDIAN` or `OVERSEAS` |
+| `eventId` | UUID | ✅ | The event to register for |
+| `quantity` | Integer | ✅ | Minimum 1, max = `event.maxTicketsPerMember` |
+| `action` | String | ✅ | `PAY_AT_GATE` or `COMPLIMENTARY`. See payment logic below. |
+
+> **No `ONLINE` option.** Admin bookings never go through Razorpay. There are only two choices for paid events.
+
+---
+
+#### Payment Logic (Automatic — based on `ticketPrice` and `action`)
+
+| Event type | `action` sent | Result |
+|---|---|---|
+| Free event (`ticketPrice == 0`) | Ignored | `paymentStatus = FREE`, `totalAmount = 0.00` |
+| Paid event | `PAY_AT_GATE` | `paymentStatus = PAY_AT_GATE`, `totalAmount = paidTickets × ticketPrice` |
+| Paid event | `COMPLIMENTARY` | `paymentStatus = COMPLIMENTARY`, `totalAmount = 0.00` |
+
+- **`PAY_AT_GATE`**: The member still owes money. Staff collects cash or card at the venue on event day. This booking will appear in the gate check-in queue and must go through `POST /api/staff/record-payment` to be admitted.
+- **`COMPLIMENTARY`**: The admin has waived the fee. The member can attend for free and will be admitted directly via `POST /api/staff/checkin`.
+
+---
+
+**Success Response `200 OK`:**
+```json
+{
+  "ticketReference": "TKT-2026-GH34JK",
+  "quantity": 2,
+  "totalAmount": 2000.00,
+  "paymentStatus": "PAY_AT_GATE",
+  "memberId": "RIC-2024-04512",
+  "eventTitle": "Mere Mehboob Na Ja…",
+  "eventDate": "2026-07-08",
+  "eventStartTime": "18:30:00",
+  "eventVenue": "Main Audi, RIC",
+  "bookedBy": "admin@ric.org",
+  "bookedAt": "2026-07-24T22:45:00"
+}
+```
+
+**Response Fields:**
+
+| Field | Type | Notes |
+|---|---|---|
+| `ticketReference` | String | The booking's unique ticket ID — same format as member-self-service bookings |
+| `quantity` | Integer | Number of tickets booked |
+| `totalAmount` | Decimal | `0.00` for FREE or COMPLIMENTARY, calculated price for PAY_AT_GATE |
+| `paymentStatus` | String | `FREE`, `PAY_AT_GATE`, or `COMPLIMENTARY` |
+| `memberId` | String | The member who was registered |
+| `eventTitle` | String | Name of the event |
+| `eventDate` | Date | `YYYY-MM-DD` |
+| `eventStartTime` | Time | `HH:mm:ss` |
+| `eventVenue` | String | Primary venue |
+| `bookedBy` | String | Email of the admin/staff who created this booking (audit trail) |
+| `bookedAt` | DateTime | When the booking was created |
+
+---
+
+#### Guards (All enforced before saving):
+
+| Check | Error if fails |
+|---|---|
+| `memberId` starts with `RIC` | `400 Bad Request` |
+| Event exists | `404 Not Found` |
+| Event status is `PUBLISHED` | `400 Bad Request` |
+| Registration deadline not passed | `400 Bad Request` |
+| `quantity` ≤ `maxTicketsPerMember` | `400 Bad Request` |
+| Enough seats available | `400 Bad Request` |
+| No existing registration for this member + event | `409 Conflict` |
+
+> **Duplicate booking note:** Unlike the member self-service flow (which silently overwrites a FAILED row to allow retries), admin bookings **always reject** if any registration already exists for the member + event. The admin should check `GET /api/admin/events/{eventId}/registrations` first if unsure.
+
+---
+
+#### Error Responses:
+
+| HTTP | Scenario |
+|---|---|
+| `400 Bad Request` | Invalid memberId, event not published, deadline passed, quantity over limit, or sold out |
+| `404 Not Found` | Event ID does not exist |
+| `409 Conflict` | A registration already exists for this member + event |
+| `401 Unauthorized` | JWT missing or expired |
+| `403 Forbidden` | Caller does not have ADMIN or STAFF role |
+
+---
+
+#### Postman Testing Guide
+
+**Step 1** — Log in as admin and copy the JWT:
+```
+POST /api/auth/login
+{
+  "email": "admin@ric.org",
+  "password": "yourpassword"
+}
+```
+Copy the `token` from the response.
+
+**Step 2** — Create a booking:
+```
+POST /api/admin/bookings/register
+Authorization: Bearer <token>
+
+{
+  "memberId": "RIC-2024-04512",
+  "memberType": "INDIAN",
+  "eventId": "<paste-event-uuid>",
+  "quantity": 1,
+  "action": "PAY_AT_GATE"
+}
+```
+Expected response: `200 OK` with the ticket details.
+
+**Step 3 — Test PAY_AT_GATE path** (as above):
+- Staff can now scan the ticket reference via `POST /api/staff/record-payment` to collect payment and check the member in.
+
+**Step 4 — Test COMPLIMENTARY path:**
+```json
+{ "action": "COMPLIMENTARY" }
+```
+Expected: `paymentStatus = COMPLIMENTARY`, `totalAmount = 0.00`.
+- Staff can now admit this member directly via `POST /api/staff/checkin`.
+
+**Step 5 — Test FREE event path:**
+- Use an event where `ticketPrice = 0`. `action` field is still required in JSON but is ignored.
+Expected: `paymentStatus = FREE`, `totalAmount = 0.00`.
+
+**Step 6 — Test duplicate guard:**
+- Call `POST /api/admin/bookings/register` again with the same `memberId` + `eventId`.
+Expected: `409 Conflict`.
+
+---
+
 ## Staff Operations API
 
 > **Access:** All endpoints in this section require a valid JWT with `STAFF` or `ADMIN` role.
@@ -1048,6 +1286,106 @@ For `COMPLIMENTARY` action, `paymentStatus` will be `"COMPLIMENTARY"` and the me
 For `CONFIRMED`, `FREE`, and `COMPLIMENTARY` tickets, money has already been settled before the member arrives at the gate, so scanning the QR code is the only remaining step.
 
 For `PAY_AT_GATE`, the member hasn't paid yet. If the QR scan admitted them before payment was recorded, staff could forget to record it and the member would be inside with an unpaid ticket. By requiring payment to be recorded first, the two steps are fused into one action — the money is confirmed and the member is admitted simultaneously with no gap.
+
+---
+
+
+
+### 3. Ticket Lookup (Manual Fallback)
+
+Pure read-only lookup of a single ticket by its reference. **Does not check the member in or change any data.**
+
+Used when QR scanning fails — staff types the ticket reference manually to view the booking details before deciding which action to take.
+
+```
+GET /api/staff/lookup?ticketReference=TKT-2026-AB12CD
+```
+
+**Access:** STAFF, ADMIN
+
+**Query Parameter:**
+
+| Parameter | Type | Required | Notes |
+|---|---|---|---|
+| `ticketReference` | String | ✅ | The ticket reference (e.g. `TKT-2026-AB12CD`). Pass as a query param, not in the body. |
+
+No request body needed.
+
+---
+
+#### Success Response `200 OK`
+
+```json
+{
+  "registrationId": "d4e5f6a7-...",
+  "ticketReference": "TKT-2026-AB12CD",
+  "memberId": "RIC-2024-04512",
+  "memberType": "INDIAN",
+  "quantity": 2,
+  "totalAmount": 2000.00,
+  "paymentStatus": "PAY_AT_GATE",
+  "paymentPreference": "AT_GATE",
+  "isCheckedIn": false,
+  "checkedInAt": null,
+  "bookedAt": "2026-07-05T10:30:00"
+}
+```
+
+**Response Fields:**
+
+| Field | Notes |
+|---|---|
+| `registrationId` | Internal UUID of the booking |
+| `ticketReference` | The user-facing ticket ID |
+| `memberId` | The RIC Member ID |
+| `memberType` | `INDIAN` or `OVERSEAS` |
+| `quantity` | Number of tickets on this booking |
+| `totalAmount` | Amount owed (0.00 for FREE/COMPLIMENTARY) |
+| `paymentStatus` | Current status — see table below for what to do next |
+| `paymentPreference` | How the member chose to pay |
+| `isCheckedIn` | `true` if already admitted |
+| `checkedInAt` | Timestamp of admission, or `null` |
+| `bookedAt` | When the booking was created |
+
+---
+
+#### What to do based on `paymentStatus`
+
+| `paymentStatus` returned | What staff should do next |
+|---|---|
+| `CONFIRMED` | Call `POST /api/staff/checkin` to admit the member |
+| `FREE` | Call `POST /api/staff/checkin` to admit the member |
+| `COMPLIMENTARY` | Call `POST /api/staff/checkin` to admit the member |
+| `PAY_AT_GATE` | Collect payment, then call `POST /api/staff/record-payment` |
+| `PENDING` | Reject entry — member's online payment was never completed |
+| `FAILED` | Reject entry — payment failed; no valid booking exists |
+
+---
+
+#### Error Responses
+
+| HTTP | Scenario |
+|---|---|
+| `404 Not Found` | Ticket reference does not exist |
+| `401 Unauthorized` | JWT missing or expired |
+| `403 Forbidden` | Caller does not have STAFF or ADMIN role |
+
+---
+
+#### Postman Testing Guide
+
+```
+GET /api/staff/lookup?ticketReference=TKT-2026-AB12CD
+Authorization: Bearer <staff-or-admin-token>
+```
+
+No body needed. The reference goes in the URL as a query parameter.
+
+Test cases:
+- ✅ Valid ticket → `200 OK` with all details
+- ❌ Wrong reference → `404 Not Found`
+- ❌ No token → `401 Unauthorized`
+- ❌ Member JWT (non-staff) → `403 Forbidden`
 
 ---
 
@@ -1504,3 +1842,194 @@ This endpoint **always** returns `200 OK` with body `"ok"`, even on internal err
 | `paymentStatus` | `PENDING` | `FAILED` |
 
 ---
+
+## Member Self-Service API
+
+> **Access:** These endpoints are PUBLIC but are guarded by a `sessionToken`.
+> The member must first call `POST /api/registration/verify-member` to obtain a valid `sessionToken` before using any endpoint in this section.
+
+---
+
+### 1. My Bookings
+
+Returns the complete booking history for the authenticated member across all events. Ordered newest first.
+
+```
+GET /api/registration/my-bookings?sessionToken={token}
+```
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Notes |
+|---|---|---|---|
+| `sessionToken` | String | ✅ | The token from `verify-member`. Valid for 1 hour. |
+
+> **Security note:** The `memberId` is **never** accepted as a query parameter. The session token is the only trusted source of truth, preventing a member from viewing another member's bookings by guessing their ID.
+
+**Success Response `200 OK`:**
+
+Returns an array of bookings. An empty array `[]` is returned if the member has no bookings yet.
+
+```json
+[
+  {
+    "ticketReference": "TKT-2026-AB12CD",
+    "quantity": 2,
+    "totalAmount": 2000.00,
+    "paymentStatus": "CONFIRMED",
+    "paymentPreference": "ONLINE",
+    "isCheckedIn": true,
+    "checkedInAt": "2026-07-08T18:35:22",
+    "eventTitle": "Mere Mehboob Na Ja…",
+    "eventDate": "2026-07-08",
+    "eventStartTime": "18:30:00",
+    "eventVenue": "Main Audi, RIC",
+    "eventUniqueLink": "mere-mehboob-na-ja",
+    "bookedAt": "2026-07-05T10:30:00"
+  },
+  {
+    "ticketReference": "TKT-2026-XY9Z01",
+    "quantity": 1,
+    "totalAmount": 500.00,
+    "paymentStatus": "FAILED",
+    "paymentPreference": "ONLINE",
+    "isCheckedIn": false,
+    "checkedInAt": null,
+    "eventTitle": "Navratri Gala 2026",
+    "eventDate": "2026-10-02",
+    "eventStartTime": "19:00:00",
+    "eventVenue": "RIC Convention Hall",
+    "eventUniqueLink": "navratri-gala-2026",
+    "bookedAt": "2026-09-25T14:20:00"
+  }
+]
+```
+
+**Response Fields:**
+
+| Field | Type | Notes |
+|---|---|---|
+| `ticketReference` | String | The member's booking ID (e.g. `TKT-2026-AB12CD`) |
+| `quantity` | Integer | Number of tickets booked |
+| `totalAmount` | Decimal | Total amount charged for this booking |
+| `paymentStatus` | String | `CONFIRMED`, `FREE`, `PAY_AT_GATE`, `COMPLIMENTARY`, `PENDING`, `FAILED` |
+| `paymentPreference` | String | `ONLINE` or `PAY_AT_GATE` |
+| `isCheckedIn` | Boolean | `true` if the member has been scanned at the gate |
+| `checkedInAt` | DateTime | Gate check-in timestamp — `null` if not yet checked in |
+| `eventTitle` | String | Event name |
+| `eventDate` | Date | Event date (`YYYY-MM-DD`) |
+| `eventStartTime` | Time | Event start time (`HH:mm:ss`) |
+| `eventVenue` | String | Primary venue of the event |
+| `eventUniqueLink` | String | Slug for linking to the event detail page |
+| `bookedAt` | DateTime | When this booking was created |
+
+> **All statuses are returned.** `FAILED` and `PENDING` bookings are included so the member can see their full history and understand what happened to each payment attempt.
+
+**Error Responses:**
+
+| HTTP | Scenario |
+|---|---|
+| `401 Unauthorized` | `sessionToken` is expired, invalid, or missing |
+
+| `401 Unauthorized` | `sessionToken` is expired, invalid, or missing |
+
+---
+
+## Background Schedulers
+
+These are background jobs that run automatically inside the server — they require no API calls and are not triggered by any user action.
+
+> **Note:** WhatsApp/email notification-based schedulers (e.g. reminders before an event) are planned but not yet implemented. They will be added when the notification service integration is complete.
+
+---
+
+### 1. Event Auto-Completion Scheduler
+
+**File:** `EventCompletionScheduler.java`
+
+**What it does:** Every night at **00:15 AM**, the system scans for any `PUBLISHED` events whose `eventDate` is in the past and automatically marks them as `COMPLETED`.
+
+**Why it exists:** Admins often forget (or don't have time) to manually mark events as completed after they conclude. Without this, the dashboard's `completedEvents` count stays permanently at 0, and old events show up as "live" in the `PUBLISHED` state indefinitely.
+
+**Schedule:** `cron = "0 15 0 * * *"` — every day at 00:15 AM (server time).
+
+**Transition:**
+```
+PUBLISHED + eventDate < today → COMPLETED
+```
+
+**What it does NOT change:**
+- `CANCELLED` events — a cancelled event that passed its date stays `CANCELLED` (it was never held)
+- `DRAFT` events — not published, so not eligible for auto-completion
+- Events already in `COMPLETED` or `CANCELLED` — excluded by the query's `status = 'PUBLISHED'` filter
+
+**Idempotent:** ✅ Safe to run multiple times. Already-completed events are excluded by the query.
+
+**Log output (example):**
+```
+[SCHEDULER][EventCompletion] Found 2 PUBLISHED event(s) past their date. Marking as COMPLETED...
+[SCHEDULER][EventCompletion] Completing event 'Mere Mehboob Na Ja…' (id=..., date=2026-07-08)
+[SCHEDULER][EventCompletion] Completing event 'Kathak Dance Evening' (id=..., date=2026-07-15)
+[SCHEDULER][EventCompletion] Done. 2 event(s) marked as COMPLETED.
+```
+
+---
+
+### 2. Pending Payment Expiry Scheduler
+
+**File:** `PendingPaymentExpiryScheduler.java`
+
+**What it does:** Every **10 minutes**, the system scans for `PENDING` registrations that are older than **30 minutes** (configurable) and marks them as `FAILED`.
+
+**Why it exists:** When a member opens the Razorpay payment popup and then abandons it (closes the app, browser crash, navigates away), **Razorpay does NOT send a failure webhook**. The registration stays stuck in `PENDING` state forever, which:
+- Makes the member's booking history confusing — their booking looks "stuck" with no clear outcome.
+- Prevents the member from making a clean retry on the same event (the system finds the old row).
+
+By expiring stale `PENDING` rows to `FAILED`, the member's history is clear and a fresh booking can be started.
+
+**Schedule:** `fixedRate = 600,000 ms` (every 10 minutes, starting 10 minutes after app boot).
+
+**Expiry window:** Configured in `application.properties`:
+```properties
+scheduler.pending-expiry.minutes=30
+```
+
+**Transition:**
+```
+PENDING + bookedAt < (now - 30 minutes) → FAILED
+```
+
+**What it does NOT change:**
+- Fresh `PENDING` registrations (within the 30-minute window) — left alone so live in-flight payments aren't disrupted
+- Any other status (`CONFIRMED`, `FREE`, etc.) — excluded by the query's `payment_status = 'PENDING'` filter
+
+**Razorpay order:** The scheduler does NOT cancel the Razorpay order. Razorpay orders expire automatically after 15 minutes on their side. We only update our own database record.
+
+**Idempotent:** ✅ Safe to run multiple times. Once a row is `FAILED`, it's excluded by the query.
+
+**Log output (example):**
+```
+[SCHEDULER][PendingExpiry] Found 3 stale PENDING registration(s) older than 30 minutes. Expiring...
+[SCHEDULER][PendingExpiry] Expiring ticket=TKT-2026-AB12CD, member=RIC-2024-04512, event=..., bookedAt=2026-07-27T22:30:00
+[SCHEDULER][PendingExpiry] Done. 3 registration(s) expired to FAILED.
+```
+
+---
+
+### Scheduler Configuration Reference
+
+| Property | Default | Description |
+|---|---|---|
+| `scheduler.pending-expiry.minutes` | `30` | Minutes after which a PENDING registration is considered stale |
+
+> To change the expiry window, update `application.properties` and restart the server. No code change needed.
+
+---
+
+### Summary
+
+| Scheduler | File | Trigger | Action |
+|---|---|---|---|
+| Event Auto-Completion | `EventCompletionScheduler.java` | Daily at 00:15 AM | `PUBLISHED` past-date events → `COMPLETED` |
+| Pending Payment Expiry | `PendingPaymentExpiryScheduler.java` | Every 10 minutes | `PENDING` registrations older than 30 min → `FAILED` |
+
