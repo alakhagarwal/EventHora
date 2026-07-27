@@ -75,6 +75,8 @@ export const api = {
 
   adminEvents: () => apiFetch<any[]>("/api/admin/events"),
   adminEvent: (id: string) => apiFetch<any>(`/api/admin/events/${id}`),
+  eventRegistrations: (eventId: string) => apiFetch<any[]>(`/api/admin/events/${eventId}/registrations`),
+  eventPaymentSummary: (eventId: string) => apiFetch<any>(`/api/admin/events/${eventId}/payment-summary`),
   createEvent: (body: any) => apiFetch("/api/events", { method: "POST", json: body }),
   updateEvent: (id: string, body: any) =>
     apiFetch(`/api/events/${id}`, { method: "PATCH", json: body }),

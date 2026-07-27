@@ -54,6 +54,12 @@ const icons = {
       <circle cx="12" cy="13" r="4" />
     </svg>
   ),
+  dashboard: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="9" rx="1" /><rect x="14" y="3" width="7" height="5" rx="1" />
+      <rect x="14" y="12" width="7" height="9" rx="1" /><rect x="3" y="16" width="7" height="5" rx="1" />
+    </svg>
+  ),
 };
 
 export default function Navbar() {
@@ -123,6 +129,7 @@ export default function Navbar() {
             )}
             {session?.role === "ADMIN" && (
               <>
+                <Link href="/admin/dashboard" className={linkCls("/admin/dashboard")}>Dashboard</Link>
                 <Link href="/admin/my-events" className={linkCls("/admin/my-events")}>My Events</Link>
                 <Link href="/admin/events" className={linkCls("/admin/events")}>All Events</Link>
                 <Link href="/admin/users" className={linkCls("/admin/users")}>Users</Link>
@@ -183,6 +190,9 @@ export default function Navbar() {
               {session?.role === "ADMIN" && (
                 <>
                   <div className="drawer-divider" />
+                  <Link href="/admin/dashboard" className={drawerLinkCls("/admin/dashboard")} onClick={() => setDrawerOpen(false)}>
+                    {icons.dashboard} Dashboard
+                  </Link>
                   <Link href="/admin/my-events" className={drawerLinkCls("/admin/my-events")} onClick={() => setDrawerOpen(false)}>
                     {icons.myEvents} My Events
                   </Link>

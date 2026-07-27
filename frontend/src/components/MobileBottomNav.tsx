@@ -86,9 +86,13 @@ type NavItem = {
 
 /* ── Build nav items based on role ── */
 function getNavItems(session: Session, hasMemberSession: boolean): NavItem[] {
+  const eventItem: NavItem = session?.role === "ADMIN"
+    ? { label: "My Events", href: "/admin/my-events", icon: CalendarIcon, matchPaths: ["/admin/my-events"] }
+    : { label: "Events", href: "/events", icon: CalendarIcon, matchPaths: ["/events"] };
+
   const items: NavItem[] = [
     { label: "Home", href: "/", icon: HomeIcon, matchPaths: ["/"] },
-    { label: "Events", href: "/events", icon: CalendarIcon, matchPaths: ["/events"] },
+    eventItem,
   ];
 
   if (session?.role === "ADMIN" || session?.role === "STAFF") {
