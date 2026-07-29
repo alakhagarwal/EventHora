@@ -620,7 +620,7 @@ This URL is saved to `Event.bannerUrl` and is what the frontend uses to display 
 
 ### 7. List Public Events (Member Landing Page)
 
-Returns a summary list of all `PUBLISHED` events, ordered by event date (newest first). 
+Returns a summary list of all `PUBLISHED` events, ordered by event date (newest first).
 
 ```
 GET /api/events
@@ -628,27 +628,61 @@ GET /api/events
 > **Access:** PUBLIC (No token required)
 
 **Success Response `200 OK`:**
-Returns an array of `EventSummaryResponse` objects. Each object includes:
-- `registrationOpen` (boolean): `true` if the event is published, the deadline has not passed, and it is not sold out.
-- `isSoldOut` (boolean): `true` if `bookedCount >= totalCapacity`.
+
+Returns an array of `PublicEventResponse` objects. Each includes:
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | UUID | Internal event ID |
+| `title` | String | Event name |
+| `category` | String | Event category |
+| `bannerUrl` | String | Pre-signed S3 URL (valid 7 days), or `null` |
+| `eventDate` | Date | `YYYY-MM-DD` |
+| `startTime` | Time | `HH:mm:ss` |
+| `endTime` | Time | `HH:mm:ss` |
+| `registrationDeadline` | DateTime | After this, `registrationOpen` becomes `false` |
+| `venue` | String | Primary venue |
+| `additionalVenueInfo` | String | Secondary venue info, or `null` |
+| `maxTicketsPerMember` | Integer | Max tickets a single member can book |
+| `freeTicketsPerRegistration` | Integer | How many of those tickets are free |
+| `ticketPrice` | Decimal | Price per paid ticket (`0.00` for free events) |
+| `minimumAge` | Integer | Minimum age requirement, or `null` |
+| `importantNotes` | Array\<String\> | Bullet-point notes from the invite |
+| `contactPersonName` | String | Contact name for queries |
+| `contactPersonPhone` | String | Contact phone for queries |
+| `totalCapacity` | Integer | Maximum total tickets for the event |
+| `availableCount` | Integer | Remaining seats (`totalCapacity - lockedTickets`). Use this to cap the quantity selector on the booking page. Never goes below `0`. |
+| `uniqueEventLink` | String | URL slug for this event |
+| `registrationOpen` | Boolean | `true` if PUBLISHED + deadline not passed + not sold out |
+| `isSoldOut` | Boolean | `true` when `availableCount == 0` |
 
 ---
 
 ### 8. Get Public Event Details
 
-Returns the full details of a single `PUBLISHED` event by its unique link. Used for the event details page where a member begins the booking process.
+Returns the full details of a single `PUBLISHED` event by its unique link. Used for the event detail page and booking flow.
 
 ```
 GET /api/events/{link}
 ```
 > **Access:** PUBLIC (No token required)
 
-**Success Response `200 OK`:**
-Returns a `PublicEventResponse` object containing the event details, ticket limits, rules, and notes.
-Also includes `registrationOpen` and `isSoldOut` booleans to easily determine the booking status.
+**Path Parameter:** `link` — the `uniqueEventLink` slug (e.g. `mere-mehboob-na-ja-2026`).
 
-**Error `404 Not Found`:**
-If the slug doesn't exist or the event is in `DRAFT`/`CANCELLED` status.
+**Success Response `200 OK`:**
+
+Returns the same `PublicEventResponse` shape as section 7 above. All fields are identical.
+
+> **Frontend guidance for the booking page:**
+> - Cap the quantity selector at `Math.min(availableCount, maxTicketsPerMember)` — never let the member select more tickets than are available.
+> - Disable the "Book Now" button when `registrationOpen == false` or `isSoldOut == true`.
+> - Show a "Sold Out" badge when `isSoldOut == true`.
+
+**Error Responses:**
+
+| HTTP | Scenario |
+|---|---|
+| `404 Not Found` | Slug doesn't exist, or event is `DRAFT`/`CANCELLED` |
 
 ---
 

@@ -274,15 +274,16 @@ public class EventService {
 
     private PublicEventResponse toPublicEventResponse(Event event) {
         int booked = registrationRepository.sumLockedTicketsForEvent(event.getId());
-        boolean isSoldOut = booked >= event.getTotalCapacity();
-        
+        int available = Math.max(0, event.getTotalCapacity() - booked);
+        boolean isSoldOut = available == 0;
+
         return PublicEventResponse.builder()
                 .id(event.getId())
                 .title(event.getTitle())
                 .description(event.getDescription())
                 .category(event.getCategory())
-                .bannerUrl(event.getBannerUrl() != null && !event.getBannerUrl().isBlank() 
-                        ? s3Service.generatePresignedUrl(event.getBannerUrl(), Duration.ofDays(7)) 
+                .bannerUrl(event.getBannerUrl() != null && !event.getBannerUrl().isBlank()
+                        ? s3Service.generatePresignedUrl(event.getBannerUrl(), Duration.ofDays(7))
                         : null)
                 .eventDate(event.getEventDate())
                 .startTime(event.getStartTime())
@@ -297,6 +298,8 @@ public class EventService {
                 .importantNotes(event.getImportantNotes())
                 .contactPersonName(event.getContactPersonName())
                 .contactPersonPhone(event.getContactPersonPhone())
+                .totalCapacity(event.getTotalCapacity())
+                .availableCount(available)
                 .uniqueEventLink(event.getUniqueEventLink())
                 .registrationOpen(
                         event.getStatus() == EventStatus.PUBLISHED
