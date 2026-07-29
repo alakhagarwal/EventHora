@@ -1,4 +1,4 @@
-import type { CheckInResponse } from "@/types/staff";
+import type { CheckInResponse, LookupResponse } from "@/types/staff";
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
@@ -75,6 +75,7 @@ export const api = {
 
   adminEvents: () => apiFetch<any[]>("/api/admin/events"),
   adminEvent: (id: string) => apiFetch<any>(`/api/admin/events/${id}`),
+  dashboardStats: () => apiFetch<any>("/api/admin/dashboard"),
   eventRegistrations: (eventId: string) => apiFetch<any[]>(`/api/admin/events/${eventId}/registrations`),
   eventPaymentSummary: (eventId: string) => apiFetch<any>(`/api/admin/events/${eventId}/payment-summary`),
   createEvent: (body: any) => apiFetch("/api/events", { method: "POST", json: body }),
@@ -120,6 +121,22 @@ export const api = {
       method: "POST",
       json: body,
     }),
+
+  lookupTicket: (ticketReference: string) =>
+    apiFetch<LookupResponse>(`/api/staff/lookup?ticketReference=${encodeURIComponent(ticketReference)}`),
+
+  myBookings: (sessionToken: string) =>
+    apiFetch<any[]>(`/api/registration/my-bookings?sessionToken=${encodeURIComponent(sessionToken)}`, {
+      auth: false,
+    }),
+
+  adminRegisterMember: (body: {
+    memberId: string;
+    memberType: "INDIAN" | "OVERSEAS";
+    eventId: string;
+    quantity: number;
+    action: "PAY_AT_GATE" | "COMPLIMENTARY";
+  }) => apiFetch("/api/admin/bookings/register", { method: "POST", json: body }),
 
   recordGatePayment: (body: { ticketReference: string; action: "PAID" | "COMPLIMENTARY" }) =>
     apiFetch<CheckInResponse>("/api/staff/record-payment", {

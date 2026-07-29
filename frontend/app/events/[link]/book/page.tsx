@@ -79,7 +79,7 @@ export default function BookEventPage() {
   return (
     <>
       {/* ── Page content ── */}
-      <div className="mx-auto max-w-lg px-4 md:px-6 py-8 md:py-12 pb-32 md:pb-12">
+      <div className="mx-auto max-w-lg px-4 md:px-6 py-8 md:py-12">
         {/* Back */}
         <Link
           href={`/events/${link}`}
@@ -165,36 +165,20 @@ export default function BookEventPage() {
             <div className="mt-4 text-sm text-red-600 bg-red-50 rounded-lg px-4 py-2">{err}</div>
           )}
 
-          {/* Desktop CTA */}
+          {/* CTA */}
           <button
             onClick={proceed}
             disabled={busy || !ev.registrationOpen}
-            className="btn-primary w-full mt-6 disabled:opacity-50 disabled:cursor-not-allowed hidden md:block"
+            className="btn-primary w-full mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {busy ? "Please wait…" : "Proceed to Verification"}
           </button>
-          <p className="mt-2 text-[11px] text-navy/50 text-center hidden md:block">
+          <p className="mt-2 text-[11px] text-navy/50 text-center">
             Members only · OTP will be sent to your registered contact
           </p>
         </div>
       </div>
 
-      {/* ── Mobile fixed bottom bar ── */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-navy/10 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] px-4 py-3">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-navy/50">{quantity} ticket{quantity > 1 ? "s" : ""}</span>
-          <span className="font-display text-lg text-navy">
-            {ticketPrice === 0 ? "Free" : `₹${total.toLocaleString("en-IN")}`}
-          </span>
-        </div>
-        <button
-          onClick={proceed}
-          disabled={busy || !ev.registrationOpen}
-          className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {busy ? "Please wait…" : "Proceed to Verification"}
-        </button>
-      </div>
     </>
   );
 }

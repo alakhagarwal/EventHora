@@ -9,3 +9,17 @@ export interface CheckInResponse {
   checkedInAt: string;
   message: string;
 }
+
+export interface LookupResponse {
+  registrationId: string;
+  ticketReference: string;
+  memberId: string;
+  memberType: string;
+  quantity: number;
+  totalAmount: number;
+  paymentStatus: string;
+  paymentPreference: string;
+  isCheckedIn: boolean;
+  checkedInAt: string | null;
+  bookedAt: string;
+}

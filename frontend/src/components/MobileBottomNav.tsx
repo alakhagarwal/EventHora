@@ -29,6 +29,19 @@ function CalendarIcon({ active }: { active: boolean }) {
   );
 }
 
+function BookingsIcon({ active }: { active: boolean }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round"
+      className="h-5 w-5">
+      <path d="M5 4h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4V6a2 2 0 0 1 2-2z" />
+      <path d="M8 8h8" />
+      <path d="M8 12h8" />
+      <path d="M8 16h5" />
+    </svg>
+  );
+}
+
 function UsersIcon({ active }: { active: boolean }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -94,6 +107,10 @@ function getNavItems(session: Session, hasMemberSession: boolean): NavItem[] {
     { label: "Home", href: "/", icon: HomeIcon, matchPaths: ["/"] },
     eventItem,
   ];
+
+  if (!session && hasMemberSession) {
+    items.push({ label: "Bookings", href: "/member/bookings", icon: BookingsIcon, matchPaths: ["/member/bookings"] });
+  }
 
   if (session?.role === "ADMIN" || session?.role === "STAFF") {
     items.push({ label: "Scanner", href: "/staff", icon: ScanIcon, matchPaths: ["/staff"] });

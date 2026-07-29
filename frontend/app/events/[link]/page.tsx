@@ -197,12 +197,12 @@ export default function EventDetails() {
         </div>
       </div>
 
-      {/* ── Mobile: fixed bottom Book Now bar ── */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-navy/10 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] px-4 py-3">
+      {/* ── Mobile: floating Book Now above bottom nav ── */}
+      <div className="md:hidden fixed bottom-20 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-sm">
         <button
           onClick={handleBook}
           disabled={bookingDisabled}
-          className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+          className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
         >
           {bookLabel}
         </button>

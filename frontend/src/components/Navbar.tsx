@@ -19,10 +19,26 @@ const icons = {
       <line x1="3" y1="10" x2="21" y2="10" />
     </svg>
   ),
+  bookings: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4V5z" />
+      <path d="M8 7h8" />
+      <path d="M8 12h8" />
+      <path d="M8 17h5" />
+    </svg>
+  ),
   myEvents: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" />
       <line x1="3" y1="10" x2="21" y2="10" /><path d="M9 16l2 2 4-4" />
+    </svg>
+  ),
+  registerMember: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21a8 8 0 0 1 16 0" />
+      <path d="M19 8v6" />
+      <path d="M16 11h6" />
     </svg>
   ),
   allEvents: (
@@ -131,9 +147,13 @@ export default function Navbar() {
               <>
                 <Link href="/admin/dashboard" className={linkCls("/admin/dashboard")}>Dashboard</Link>
                 <Link href="/admin/my-events" className={linkCls("/admin/my-events")}>My Events</Link>
+                <Link href="/admin/bookings/new" className={linkCls("/admin/bookings/new")}>Register Member</Link>
                 <Link href="/admin/events" className={linkCls("/admin/events")}>All Events</Link>
                 <Link href="/admin/users" className={linkCls("/admin/users")}>Users</Link>
               </>
+            )}
+            {!session && memberSession && (
+              <Link href="/member/bookings" className={linkCls("/member/bookings")}>My Bookings</Link>
             )}
             {is_logged_in && <Link href="/profile" className={linkCls("/profile")}>Profile</Link>}
           </nav>
@@ -181,6 +201,12 @@ export default function Navbar() {
                 {icons.events} Events
               </Link>
 
+              {!session && memberSession && (
+                <Link href="/member/bookings" className={drawerLinkCls("/member/bookings")} onClick={() => setDrawerOpen(false)}>
+                  {icons.bookings} My Bookings
+                </Link>
+              )}
+
               {is_staff_or_admin && (
                 <Link href="/staff" className={drawerLinkCls("/staff")} onClick={() => setDrawerOpen(false)}>
                   {icons.scan} Gate Scanner
@@ -195,6 +221,9 @@ export default function Navbar() {
                   </Link>
                   <Link href="/admin/my-events" className={drawerLinkCls("/admin/my-events")} onClick={() => setDrawerOpen(false)}>
                     {icons.myEvents} My Events
+                  </Link>
+                  <Link href="/admin/bookings/new" className={drawerLinkCls("/admin/bookings/new")} onClick={() => setDrawerOpen(false)}>
+                    {icons.registerMember} Register Member
                   </Link>
                   <Link href="/admin/events" className={drawerLinkCls("/admin/events")} onClick={() => setDrawerOpen(false)}>
                     {icons.allEvents} All Events

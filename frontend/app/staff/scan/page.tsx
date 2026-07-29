@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Camera, QrCode, ArrowLeft, RefreshCw, DollarSign, Gift, AlertCircle, Loader2 } from "lucide-react";
+import { Camera, QrCode, ArrowLeft, RefreshCw, DollarSign, Gift, AlertCircle, Loader2, CheckCircle2, XCircle, User, Ticket, Clock } from "lucide-react";
 import { api } from "@/lib/api";
 import { requireStaffAuth } from "@/lib/auth";
+import type { LookupResponse } from "@/types/staff";
 
 interface PendingPaymentInfo {
   ticketReference: string;
@@ -16,12 +17,26 @@ interface PendingPaymentInfo {
   message: string;
 }
 
+function StatusChip({ status }: { status: string }) {
+  const colorMap: Record<string, string> = {
+    CONFIRMED: "bg-green-100 text-green-800",
+    FREE: "bg-blue-100 text-blue-800",
+    COMPLIMENTARY: "bg-purple-100 text-purple-800",
+    PAY_AT_GATE: "bg-orange-100 text-orange-800",
+    PENDING: "bg-yellow-100 text-yellow-800",
+    FAILED: "bg-red-100 text-red-800",
+  };
+  return <span className={`chip ${colorMap[status] || "bg-navy/10 text-navy"}`}>{status.replaceAll("_", " ")}</span>;
+}
+
 export default function StaffScanPage() {
   const router = useRouter();
   const [selectedEvent, setSelectedEvent] = useState<{ id: string; title: string } | null>(null);
   const [ticketInput, setTicketInput] = useState("");
   const [processing, setProcessing] = useState(false);
+  const [lookupLoading, setLookupLoading] = useState(false);
   const [inlineError, setInlineError] = useState<string | null>(null);
+  const [lookupResult, setLookupResult] = useState<LookupResponse | null>(null);
   const [pendingPayment, setPendingPayment] = useState<PendingPaymentInfo | null>(null);
   const [scannerKey, setScannerKey] = useState(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -200,20 +215,52 @@ export default function StaffScanPage() {
   };
 
 
-  const handleManualSubmit = (e: React.FormEvent) => {
+  const handleManualLookup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ticketInput.trim()) return;
-    handleProcessTicket(ticketInput.trim().toUpperCase());
+    setLookupLoading(true);
+    setInlineError(null);
+    setLookupResult(null);
+    try {
+      const res = await api.lookupTicket(ticketInput.trim().toUpperCase());
+      setLookupResult(res);
+    } catch (err: any) {
+      setInlineError(err.message || "Ticket not found. Please check the reference and try again.");
+    } finally {
+      setLookupLoading(false);
+    }
+  };
+
+  const handleCheckInAfterLookup = async () => {
+    if (!lookupResult) return;
+    setProcessing(true);
+    setInlineError(null);
+    try {
+      const res = await api.checkIn({ ticketReference: lookupResult.ticketReference });
+      sessionStorage.setItem("scanResult", JSON.stringify(res));
+      router.push("/staff/scan/result");
+    } catch (err: any) {
+      setInlineError(err.message || "Check-in failed.");
+      setProcessing(false);
+    }
+  };
+
+  const clearLookup = () => {
+    setLookupResult(null);
+    setPendingPayment(null);
+    setInlineError(null);
+    setTicketInput("");
   };
 
   const handleRecordPayment = async (action: "PAID" | "COMPLIMENTARY") => {
-    if (!pendingPayment) return;
+    const ticketRef = pendingPayment?.ticketReference || lookupResult?.ticketReference;
+    if (!ticketRef) return;
     setProcessing(true);
     setInlineError(null);
 
     try {
       const res = await api.recordGatePayment({
-        ticketReference: pendingPayment.ticketReference,
+        ticketReference: ticketRef,
         action,
       });
       sessionStorage.setItem("scanResult", JSON.stringify(res));
@@ -370,12 +417,12 @@ export default function StaffScanPage() {
               <div className="flex items-center gap-2 text-sm font-semibold text-navy">
                 <QrCode className="h-4 w-4 text-gold" /> Manual Reference Entry
               </div>
-              <form onSubmit={handleManualSubmit} className="space-y-3">
+              <form onSubmit={handleManualLookup} className="space-y-3">
                 <div>
                   <input
                     type="text"
                     value={ticketInput}
-                    onChange={(e) => setTicketInput(e.target.value.toUpperCase())}
+                    onChange={(e) => { setTicketInput(e.target.value.toUpperCase()); setLookupResult(null); setPendingPayment(null); setInlineError(null); }}
                     placeholder="Enter ticket reference (e.g. TKT-2026-AB12CD)"
                     className="input font-mono uppercase tracking-wider text-center"
                     maxLength={20}
@@ -383,12 +430,102 @@ export default function StaffScanPage() {
                 </div>
                 <button
                   type="submit"
-                  disabled={!ticketInput.trim()}
+                  disabled={!ticketInput.trim() || lookupLoading}
                   className="btn-primary w-full py-3 disabled:opacity-50"
                 >
-                  Check In Member
+                  {lookupLoading ? "Looking up..." : "Lookup Ticket"}
                 </button>
               </form>
+
+              {/* Lookup Result */}
+              {lookupResult && (
+                <div className="mt-4 space-y-4">
+                  <div className="bg-cream rounded-lg p-4 space-y-3 text-sm text-navy">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-navy/70">Status</span>
+                      <StatusChip status={lookupResult.paymentStatus} />
+                    </div>
+                    <div className="flex items-center justify-between py-1 border-t border-navy/10">
+                      <span className="text-navy/70">Ticket</span>
+                      <span className="font-mono font-bold">{lookupResult.ticketReference}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-1 border-t border-navy/10">
+                      <span className="text-navy/70 flex items-center gap-1.5"><User className="h-3.5 w-3.5" /> Member</span>
+                      <span className="font-semibold">{lookupResult.memberId}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-1 border-t border-navy/10">
+                      <span className="text-navy/70 flex items-center gap-1.5"><User className="h-3.5 w-3.5" /> Member Type</span>
+                      <span className="font-semibold">{lookupResult.memberType}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-1 border-t border-navy/10">
+                      <span className="text-navy/70 flex items-center gap-1.5"><Ticket className="h-3.5 w-3.5" /> Tickets (Qty)</span>
+                      <span className="font-bold">{lookupResult.quantity}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-1 border-t border-navy/10">
+                      <span className="text-navy/70">Amount</span>
+                      <span className="font-semibold">₹{lookupResult.totalAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    {lookupResult.checkedInAt && (
+                      <div className="flex items-center justify-between py-1 border-t border-navy/10">
+                        <span className="text-navy/70 flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> Checked In</span>
+                        <span className="font-medium">{new Date(lookupResult.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Action buttons */}
+                  {["CONFIRMED", "FREE", "COMPLIMENTARY"].includes(lookupResult.paymentStatus) && (
+                    <button
+                      onClick={handleCheckInAfterLookup}
+                      disabled={processing}
+                      className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                      Check In Member
+                    </button>
+                  )}
+                  {lookupResult.paymentStatus === "PAY_AT_GATE" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        onClick={() => handleRecordPayment("PAID")}
+                        disabled={processing}
+                        className="btn-primary flex items-center justify-center gap-2 py-3 disabled:opacity-50"
+                      >
+                        <DollarSign className="h-4 w-4" /> Confirm Cash Payment
+                      </button>
+                      <button
+                        onClick={() => handleRecordPayment("COMPLIMENTARY")}
+                        disabled={processing}
+                        className="btn-outline flex items-center justify-center gap-2 py-3 border-navy text-navy hover:bg-navy/5 disabled:opacity-50"
+                      >
+                        <Gift className="h-4 w-4 text-gold" /> Mark Complimentary
+                      </button>
+                    </div>
+                  )}
+                  {["PENDING", "FAILED"].includes(lookupResult.paymentStatus) && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800 flex items-start gap-2">
+                      <XCircle className="h-5 w-5 shrink-0 mt-0.5 text-red-600" />
+                      <div>
+                        <p className="font-semibold">Entry Denied</p>
+                        <p className="text-red-700">
+                          {lookupResult.paymentStatus === "PENDING"
+                            ? "This ticket has an incomplete online payment. The member does not have a valid booking."
+                            : "This ticket's payment failed. The member does not have a valid booking."}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {lookupResult.isCheckedIn && lookupResult.paymentStatus !== "PAY_AT_GATE" && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 flex items-start gap-2">
+                      <AlertCircle className="h-5 w-5 shrink-0 mt-0.5 text-amber-600" />
+                      <p className="font-medium">Already checked in at {lookupResult.checkedInAt ? new Date(lookupResult.checkedInAt).toLocaleTimeString() : "earlier"}</p>
+                    </div>
+                  )}
+                  <button onClick={clearLookup} className="w-full text-xs text-navy/60 hover:text-navy underline text-center block">
+                    Clear and try another ticket
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
