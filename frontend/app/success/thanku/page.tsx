@@ -5,6 +5,8 @@ import Link from "next/link";
 import { RegistrationResponse } from "@/lib/api";
 import QRCode from "qrcode";
 import jsPDF from "jspdf";
+import { Share2 } from "lucide-react";
+import { toast } from "@/lib/toast";
 
 export default function ThankYouPage() {
   const router = useRouter();
@@ -89,6 +91,33 @@ export default function ThankYouPage() {
       return `${h12}:${m} ${ampm}`;
     } catch {
       return t;
+    }
+  };
+
+  const buildShareMessage = () => {
+    if (!merged) return "";
+    return `🎟️ I'm attending ${merged.eventTitle} on ${formatEventDate(merged.eventDate)}! My ticket ref: ${merged.ticketReference}. See you there!`;
+  };
+
+  const handleShareBooking = async () => {
+    if (!merged?.ticketReference) return;
+    const message = buildShareMessage();
+    const url = window.location.href;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: merged.eventTitle || "Booking", text: message, url });
+      } else {
+        await navigator.clipboard.writeText(`${message}\n${url}`);
+        toast.info("Link copied!");
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${message}\n${url}`);
+        toast.info("Link copied!");
+      } catch {
+        toast.error("Unable to share booking right now.");
+      }
     }
   };
 
@@ -321,6 +350,15 @@ export default function ThankYouPage() {
                 <p className="text-[12px] text-navy/60 text-center">
                   Present this QR code at the entry gate for check-in.
                 </p>
+
+                <button
+                  type="button"
+                  onClick={handleShareBooking}
+                  disabled={!merged?.ticketReference}
+                  className="btn-outline w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Share2 className="h-4 w-4" /> Share Booking
+                </button>
 
                 <button
                   type="button"

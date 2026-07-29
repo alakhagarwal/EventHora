@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { ArrowLeft } from "lucide-react";
+import { toast } from "@/lib/toast";
 
 export default function BookEventPage() {
   const { link } = useParams<{ link: string }>();
@@ -14,9 +15,37 @@ export default function BookEventPage() {
   const [quantity, setQuantity] = useState(1);
   const [pay, setPay] = useState<"ONLINE" | "AT_GATE">("ONLINE");
   const [busy, setBusy] = useState(false);
+  const quantityRef = useRef(1);
 
   useEffect(() => {
-    api.publicEvent(link).then(setEv).catch((e) => setErr(e.message));
+    quantityRef.current = quantity;
+  }, [quantity]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      api.publicEvent(link)
+        .then((nextEvent) => {
+          if (cancelled) return;
+          setEv((current: any) => {
+            const nextAvailable = Number(nextEvent?.availableCount ?? 0);
+            if (current && current.availableCount !== undefined && nextAvailable < quantityRef.current) {
+              toast.error("Seats are running low. Your quantity has been capped.");
+              setQuantity(Math.max(1, nextAvailable));
+            }
+            return nextEvent;
+          });
+        })
+        .catch((error) => {
+          if (!cancelled) toast.error(error.message || "Failed to load event.");
+        });
+
+    load();
+    const interval = window.setInterval(load, 10000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
   }, [link]);
 
   const proceed = async () => {
@@ -26,6 +55,16 @@ export default function BookEventPage() {
       const raw = localStorage.getItem("memberSession");
       if (!raw) {
         router.push("/login");
+        return;
+      }
+      const availableCount = Number(ev?.availableCount ?? 0);
+      if (ev?.isSoldOut || availableCount <= 0) {
+        toast.error("This event is sold out.");
+        return;
+      }
+      if (availableCount < quantity) {
+        toast.error("Not enough seats remain for the selected quantity.");
+        setQuantity(Math.max(1, availableCount));
         return;
       }
       const sess = JSON.parse(raw);
@@ -65,7 +104,7 @@ export default function BookEventPage() {
 
   if (err && !ev)
     return (
-      <div className="mx-auto max-w-lg px-4 py-12 text-red-600">{err}</div>
+      <div className="mx-auto max-w-lg px-4 py-12 text-navy/60">Loading…</div>
     );
   if (!ev)
     return (
@@ -75,6 +114,21 @@ export default function BookEventPage() {
   const max = ev.maxTicketsPerMember || 4;
   const ticketPrice = Number(ev.ticketPrice || 0);
   const total = ticketPrice * quantity;
+  const availableCount = Number(ev.availableCount ?? 0);
+  const isSoldOut = ev.isSoldOut || availableCount <= 0;
+
+  if (isSoldOut) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-12">
+        <div className="card p-8 text-center">
+          <div className="eyebrow">Booking Unavailable</div>
+          <h1 className="font-display text-3xl text-navy mt-2">Sold out</h1>
+          <p className="mt-3 text-navy/70 text-sm">This event no longer has seats available.</p>
+          <Link href={`/events/${link}`} className="btn-primary mt-6 inline-flex">Back to event</Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -107,6 +161,9 @@ export default function BookEventPage() {
                 {ev.freeTicketsPerRegistration} free ticket(s) per registration
               </p>
             )}
+            <p className={`mt-3 text-sm font-semibold ${availableCount <= 5 ? "text-amber-700" : "text-green-700"}`}>
+              {availableCount} seats remaining
+            </p>
           </div>
 
           {/* Quantity */}
@@ -160,15 +217,10 @@ export default function BookEventPage() {
             </span>
           </div>
 
-          {/* Error */}
-          {err && (
-            <div className="mt-4 text-sm text-red-600 bg-red-50 rounded-lg px-4 py-2">{err}</div>
-          )}
-
           {/* CTA */}
           <button
             onClick={proceed}
-            disabled={busy || !ev.registrationOpen}
+            disabled={busy || !ev.registrationOpen || availableCount < quantity}
             className="btn-primary w-full mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {busy ? "Please wait…" : "Proceed to Verification"}

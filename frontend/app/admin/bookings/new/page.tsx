@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Minus, Plus } from "lucide-react";
+import { Minus, Plus } from "lucide-react";
 import { api } from "@/lib/api";
 import { getSession } from "@/lib/auth";
+import { toast } from "@/lib/toast";
 
 type PublishedEvent = {
   id: string;
@@ -66,7 +67,6 @@ export default function AdminDirectBookingPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<BookingSuccess | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [form, setForm] = useState<{ eventId: string; memberId: string; memberType: "INDIAN" | "OVERSEAS"; quantity: number; action: "PAY_AT_GATE" | "COMPLIMENTARY"; }>({
     eventId: "",
@@ -94,7 +94,10 @@ export default function AdminDirectBookingPage() {
           setForm((current) => ({ ...current, eventId: current.eventId || published[0].id }));
         }
       })
-      .catch((err) => setError(err?.message || "Failed to load events."))
+        .catch((err) => {
+          toast.error(err?.message || "Failed to load events.");
+          setEvents([]);
+        })
       .finally(() => setLoading(false));
   }, [router]);
 
@@ -127,11 +130,15 @@ export default function AdminDirectBookingPage() {
 
     const trimmedMemberId = form.memberId.trim().toUpperCase();
     if (!selectedEvent) {
-      setError("Please select an event.");
+      toast.error("Please select an event.");
       return;
     }
     if (!trimmedMemberId.startsWith("RIC")) {
-      setError("Member ID must start with RIC.");
+      toast.error("Member ID must start with RIC.");
+      return;
+    }
+    if (Number(selectedEvent.availableCount || 0) <= 0 || selectedEvent.isSoldOut) {
+      toast.error("This event is sold out. Please select another event.");
       return;
     }
 
@@ -144,27 +151,22 @@ export default function AdminDirectBookingPage() {
         quantity: form.quantity,
         action: isFreeEvent ? "PAY_AT_GATE" : form.action,
       });
-      setSuccess(response as BookingSuccess);
+      toast.success(`Member registered: ${response.ticketReference}`);
+      setForm((current) => resetFormState(current.eventId || events[0]?.id || ""));
     } catch (err: any) {
       const status = err?.status;
       if (status === 409) {
-        setError("This member is already registered for this event");
+        toast.error("This member is already registered for this event");
       } else if (status === 404) {
-        setError("Event not found");
+        toast.error("Event not found");
       } else if (status === 400) {
-        setError(err?.message || "Please check the form details and try again.");
+        toast.error(err?.message || "Please check the form details and try again.");
       } else {
-        setError(err?.message || "Failed to register member.");
+        toast.error(err?.message || "Failed to register member.");
       }
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const startAnother = () => {
-    setSuccess(null);
-    setError(null);
-    setForm((current) => resetFormState(current.eventId || events[0]?.id || ""));
   };
 
   if (!authReady) {
@@ -185,53 +187,8 @@ export default function AdminDirectBookingPage() {
         <div className="card p-8 text-navy/60">Loading...</div>
       ) : events.length === 0 ? (
         <div className="card p-8 text-navy/60">No published events are available for walk-in registration.</div>
-      ) : success ? (
-        <div className="card p-6 md:p-8">
-          <div className="flex items-center gap-3 text-green-700">
-            <Check className="h-8 w-8" />
-            <div>
-              <div className="font-display text-2xl font-semibold text-navy">Member registered successfully</div>
-              <p className="text-sm text-navy/70">The booking has been created and the ticket is ready.</p>
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <div className="card p-4">
-              <div className="label">Ticket Reference</div>
-              <div className="text-lg font-semibold text-navy">{success.ticketReference}</div>
-            </div>
-            <div className="card p-4">
-              <div className="label">Member ID</div>
-              <div className="text-lg font-semibold text-navy">{success.memberId}</div>
-            </div>
-            <div className="card p-4">
-              <div className="label">Event</div>
-              <div className="text-lg font-semibold text-navy">{success.eventTitle}</div>
-              <div className="mt-1 text-sm text-navy/70">{formatDateTime(success.eventDate, success.eventStartTime)}</div>
-              {success.eventVenue && <div className="mt-1 text-sm text-navy/70">{success.eventVenue}</div>}
-            </div>
-            <div className="card p-4">
-              <div className="label">Booking Summary</div>
-              <div className="text-sm text-navy/70">Qty: <span className="font-semibold text-navy">{success.quantity}</span></div>
-              <div className="text-sm text-navy/70">Amount: <span className="font-semibold text-navy">{formatAmount(success.totalAmount)}</span></div>
-              <div className="text-sm text-navy/70">Status: <span className="font-semibold text-navy">{success.paymentStatus}</span></div>
-            </div>
-            <div className="card p-4 md:col-span-2">
-              <div className="label">Booked By</div>
-              <div className="text-lg font-semibold text-navy">{success.bookedBy}</div>
-              <div className="mt-1 text-sm text-navy/70">Booked at {formatDateTime(success.bookedAt)}</div>
-            </div>
-          </div>
-
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-            <button className="btn-primary" onClick={startAnother}>Register Another Member</button>
-            <Link href="/admin/dashboard" className="btn-outline">Back to Dashboard</Link>
-          </div>
-        </div>
       ) : (
         <form onSubmit={submit} className="card space-y-6 p-5 md:p-6">
-          {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label className="label">Event</label>
@@ -242,10 +199,15 @@ export default function AdminDirectBookingPage() {
               >
                 {events.map((event) => (
                   <option key={event.id} value={event.id}>
-                    {event.title} · {formatDateTime(event.eventDate, event.startTime)}
+                    {event.title} · {formatDateTime(event.eventDate, event.startTime)} · {event.availableCount}/{event.totalCapacity}
                   </option>
                 ))}
               </select>
+              {selectedEvent && (
+                <p className={`mt-1 text-xs ${selectedEvent.isSoldOut ? "text-red-700" : "text-navy/60"}`}>
+                  {selectedEvent.availableCount}/{selectedEvent.totalCapacity} seats remaining
+                </p>
+              )}
             </div>
             <div>
               <label className="label">Member ID</label>

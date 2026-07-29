@@ -1,25 +1,37 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { getSession } from "@/lib/auth";
+import SearchInput from "@/components/SearchInput";
+import { toast } from "@/lib/toast";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 export default function UsersPage() {
   const [users, setUsers] = useState<any[]>([]);
-  const [msg, setMsg] = useState<string | null>(null);
   const router = useRouter();
+  const [query, setQuery] = useState("");
 
-  const load = () => api.users().then(setUsers).catch((e) => setMsg(e.message));
+  const load = () => api.users().then(setUsers).catch((e) => toast.error(e.message));
   useEffect(() => {
     const s = getSession(); if (!s || s.role !== "ADMIN") { router.push("/login"); return; }
     load();
   }, [router]);
 
+  const debouncedQuery = useDebouncedValue(query, 300);
+  const filteredUsers = useMemo(() => {
+    const normalizedQuery = debouncedQuery.trim().toLowerCase();
+    return users.filter((user) => {
+      if (!normalizedQuery) return true;
+      return (user.name || "").toLowerCase().includes(normalizedQuery) || (user.email || "").toLowerCase().includes(normalizedQuery);
+    });
+  }, [debouncedQuery, users]);
+
   const deactivate = async (email: string) => {
     if (!confirm(`Deactivate ${email}?`)) return;
-    try { await api.deactivateUser(email); setMsg("User deactivated."); load(); }
-    catch (e: any) { setMsg(e.message); }
+    try { await api.deactivateUser(email); toast.success("User deactivated."); load(); }
+    catch (e: any) { toast.error(e.message); }
   };
 
   return (
@@ -29,9 +41,11 @@ export default function UsersPage() {
           <div className="eyebrow">Admin</div>
           <h1 className="h1 mt-2">User Management</h1>
         </div>
-        <Link href="/admin/users/new" className="btn-primary self-start sm:self-auto">+ New User</Link>
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          <SearchInput value={query} onChange={setQuery} placeholder="Search by name or email" className="w-full sm:w-72" />
+          <Link href="/admin/users/new" className="btn-primary self-start sm:self-auto">+ New User</Link>
+        </div>
       </div>
-      {msg && <div className="mb-4 text-sm text-navy/70">{msg}</div>}
       <div className="card overflow-hidden table-scroll-mobile">
         <table className="w-full text-sm">
           <thead className="bg-navy text-white">
@@ -44,7 +58,7 @@ export default function UsersPage() {
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
+            {filteredUsers.map((u) => (
               <tr key={u.id || u.email} className="border-t border-navy/10">
                 <td className="px-4 py-3 font-medium">{u.name}</td>
                 <td className="px-4 py-3 text-xs md:text-sm">{u.email}</td>
@@ -55,7 +69,7 @@ export default function UsersPage() {
                 </td>
               </tr>
             ))}
-            {users.length === 0 && <tr><td colSpan={5} className="px-4 py-10 text-center text-navy/50">No users.</td></tr>}
+            {filteredUsers.length === 0 && <tr><td colSpan={5} className="px-4 py-10 text-center text-navy/50">No users.</td></tr>}
           </tbody>
         </table>
       </div>

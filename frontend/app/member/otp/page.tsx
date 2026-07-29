@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, RegistrationResponse } from "@/lib/api";
+import { toast } from "@/lib/toast";
 
 export default function OtpPage() {
   const router = useRouter();
@@ -10,7 +11,6 @@ export default function OtpPage() {
   const [remaining, setRemaining] = useState<number>(300);
   const [otp, setOtp] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const raw = localStorage.getItem("bookingCtx");
@@ -33,7 +33,6 @@ export default function OtpPage() {
   const ss = String(remaining % 60).padStart(2, "0");
 
   const handleConfirm = async () => {
-    setError(null);
     setBusy(true);
     try {
       const raw = localStorage.getItem("bookingCtx");
@@ -91,7 +90,7 @@ export default function OtpPage() {
               }));
               router.push("/success/thanku");
             } catch (err: any) {
-              setError(err?.message || "Payment confirmation failed.");
+              toast.error(err?.message || "Payment confirmation failed.");
               setBusy(false);
             }
           },
@@ -106,7 +105,7 @@ export default function OtpPage() {
         return;
       }
     } catch (err: any) {
-      setError(err?.message || "Something went wrong. Please try again.");
+      toast.error(err?.message || "Something went wrong. Please try again.");
       setBusy(false);
     }
   };
@@ -133,10 +132,6 @@ export default function OtpPage() {
           className="input mt-6 text-center tracking-[0.5em] text-2xl font-mono"
           placeholder="••••••"
         />
-
-        {error && (
-          <p className="mt-3 text-sm text-red-600 bg-red-50 rounded-lg px-4 py-2">{error}</p>
-        )}
 
         <button
           className="btn-primary w-full mt-4"

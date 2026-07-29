@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { saveSession } from "@/lib/auth";
+import { toast } from "@/lib/toast";
 
 type Tab = "staff" | "indian" | "overseas";
 
@@ -48,22 +49,20 @@ export default function LoginPage() {
 function StaffForm({ onDone }: { onDone: (role: "ADMIN" | "STAFF") => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const submit = async (e: React.FormEvent) => {
-    e.preventDefault(); setErr(null); setBusy(true);
+    e.preventDefault(); setBusy(true);
     try {
       const res = await api.login(email, password);
       saveSession(res.accessToken, { role: res.role, name: res.name, email: res.email });
       onDone(res.role);
-    } catch (e: any) { setErr(e.message || "Login failed"); } finally { setBusy(false); }
+    } catch (e: any) { toast.error(e.message || "Login failed"); } finally { setBusy(false); }
   };
   return (
     <form onSubmit={submit} className="space-y-4 max-w-md mx-auto">
       <h2 className="font-display text-xl md:text-2xl text-navy">Admin / Staff Login</h2>
       <div><label className="label">Email</label><input className="input" value={email} onChange={(e) => setEmail(e.target.value)} type="email" required /></div>
       <div><label className="label">Password</label><input className="input" value={password} onChange={(e) => setPassword(e.target.value)} type="password" required /></div>
-      {err && <div className="text-sm text-red-600">{err}</div>}
       <button className="btn-dark w-full" disabled={busy}>{busy ? "Signing in…" : "Sign In"}</button>
       <p className="text-xs text-navy/50 text-center">Try admin@eventhora.com / Admin@1234 (dev)</p>
     </form>
@@ -73,16 +72,15 @@ function StaffForm({ onDone }: { onDone: (role: "ADMIN" | "STAFF") => void }) {
 function MemberForm({ memberType, onDone }: { memberType: "INDIAN" | "OVERSEAS"; onDone: () => void }) {
   const [memberId, setMemberId] = useState("");
   const [identifier, setIdentifier] = useState("");
-  const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
-    e.preventDefault(); setErr(null); setBusy(true);
+    e.preventDefault(); setBusy(true);
     try {
       const res: any = await api.verifyMember({ memberId, identifier, memberType });
       if (res?.sessionToken) localStorage.setItem("memberSession", JSON.stringify(res));
       onDone();
-    } catch (e: any) { setErr(e.message || "Verification failed"); } finally { setBusy(false); }
+    } catch (e: any) { toast.error(e.message || "Verification failed"); } finally { setBusy(false); }
   };
 
   return (
@@ -93,7 +91,6 @@ function MemberForm({ memberType, onDone }: { memberType: "INDIAN" | "OVERSEAS";
         <label className="label">{memberType === "INDIAN" ? "Mobile Number" : "Email Address"}</label>
         <input className="input" value={identifier} onChange={(e) => setIdentifier(e.target.value)} type={memberType === "INDIAN" ? "tel" : "email"} required />
       </div>
-      {err && <div className="text-sm text-red-600">{err}</div>}
       <button className="btn-primary w-full" disabled={busy}>{busy ? "Verifying…" : "Verify & Continue"}</button>
     </form>
   );

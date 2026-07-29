@@ -3,9 +3,12 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, X } from "lucide-react";
+import { Check, Share2, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { getMemberSession } from "@/lib/auth";
+import { toast } from "@/lib/toast";
+import SearchInput from "@/components/SearchInput";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 type BookingRow = {
   ticketReference: string;
@@ -62,8 +65,8 @@ export default function MemberBookingsPage() {
   const router = useRouter();
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     const memberSession = getMemberSession();
@@ -80,11 +83,47 @@ export default function MemberBookingsPage() {
         const sorted = [...(data || [])].sort((a, b) => new Date(b.bookedAt).getTime() - new Date(a.bookedAt).getTime());
         setBookings(sorted);
       })
-      .catch((err) => setError(err?.message || "Failed to load bookings."))
+      .catch((err) => {
+        toast.error(err?.message || "Failed to load bookings.");
+        setBookings([]);
+      })
       .finally(() => setLoading(false));
   }, [router]);
 
   const bookingCount = useMemo(() => bookings.length, [bookings]);
+  const debouncedQuery = useDebouncedValue(query, 300);
+
+  const filteredBookings = useMemo(() => {
+    const normalizedQuery = debouncedQuery.trim().toLowerCase();
+    return bookings.filter((booking) => {
+      if (!normalizedQuery) return true;
+      return (
+        booking.ticketReference.toLowerCase().includes(normalizedQuery) ||
+        booking.eventTitle.toLowerCase().includes(normalizedQuery)
+      );
+    });
+  }, [bookings, debouncedQuery]);
+
+  const shareBooking = async (booking: BookingRow) => {
+    const message = `🎟️ I'm attending ${booking.eventTitle} on ${formatDateTime(booking.eventDate, booking.eventStartTime)}! My ticket ref: ${booking.ticketReference}. See you there!`;
+    const shareUrl = `${window.location.origin}/events/${booking.eventUniqueLink}`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: booking.eventTitle, text: message, url: shareUrl });
+      } else {
+        await navigator.clipboard.writeText(`${message}\n${shareUrl}`);
+        toast.info("Link copied!");
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${message}\n${shareUrl}`);
+        toast.info("Link copied!");
+      } catch {
+        toast.error("Unable to share booking right now.");
+      }
+    }
+  };
 
   if (!authReady) {
     return <div className="mx-auto max-w-5xl px-4 py-12 text-navy/60">Loading...</div>;
@@ -100,6 +139,18 @@ export default function MemberBookingsPage() {
         )}
       </div>
 
+      {!loading && bookings.length > 0 && (
+        <div className="mb-5 md:mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <SearchInput
+            className="w-full md:max-w-md"
+            value={query}
+            onChange={setQuery}
+            placeholder="Search by ticket reference or event title"
+          />
+          <p className="text-sm text-navy/60">Showing {filteredBookings.length} of {bookingCount} bookings</p>
+        </div>
+      )}
+
       {loading ? (
         <div className="space-y-4">
           {Array.from({ length: 3 }).map((_, index) => (
@@ -114,17 +165,20 @@ export default function MemberBookingsPage() {
             </div>
           ))}
         </div>
-      ) : error ? (
-        <div className="card border-red-200 bg-red-50 p-8 text-red-700">{error}</div>
       ) : bookings.length === 0 ? (
         <div className="card p-12 text-center text-navy/60">
           <h2 className="font-display text-2xl font-semibold text-navy">No bookings yet</h2>
           <p className="mt-2 text-sm">Browse events and make your first booking.</p>
           <Link href="/events" className="btn-primary mt-5 inline-flex">Browse Events</Link>
         </div>
+      ) : filteredBookings.length === 0 ? (
+        <div className="card p-12 text-center text-navy/60">
+          <h2 className="font-display text-2xl font-semibold text-navy">No matches found</h2>
+          <p className="mt-2 text-sm">Try a different ticket reference or event title.</p>
+        </div>
       ) : (
         <div className="space-y-4">
-          {bookings.map((booking) => (
+          {filteredBookings.map((booking) => (
             <div key={`${booking.ticketReference}-${booking.bookedAt}`} className="card p-5 md:p-6">
               <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div className="min-w-0 flex-1 space-y-3">
@@ -146,6 +200,9 @@ export default function MemberBookingsPage() {
                 </div>
 
                 <div className="flex flex-col gap-2 text-sm text-navy/70 md:items-end">
+                  <button type="button" className="btn-outline w-fit md:self-end" onClick={() => shareBooking(booking)}>
+                    <Share2 className="h-4 w-4" /> Share
+                  </button>
                   <div className="inline-flex items-center gap-2 font-medium text-navy">
                     {booking.isCheckedIn ? (
                       <><Check className="h-4 w-4 text-green-600" /> Checked in</>

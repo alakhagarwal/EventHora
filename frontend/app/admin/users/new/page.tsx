@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { getSession } from "@/lib/auth";
+import { toast } from "@/lib/toast";
 
 export default function NewUser() {
   const router = useRouter();
@@ -14,8 +15,8 @@ export default function NewUser() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setErr(null); setBusy(true);
-    try { await api.createUser(form); router.push("/admin/users"); }
-    catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+    try { await api.createUser(form); toast.success(`User created: ${form.email}`); router.push("/admin/users"); }
+    catch (e: any) { toast.error(e.message); } finally { setBusy(false); }
   };
 
   return (
@@ -33,7 +34,6 @@ export default function NewUser() {
             <option value="ADMIN">ADMIN</option>
           </select>
         </div>
-        {err && <div className="text-sm text-red-600">{err}</div>}
         <button className="btn-primary w-full" disabled={busy}>{busy ? "Creating…" : "Create User"}</button>
       </form>
     </div>

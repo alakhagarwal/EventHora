@@ -6,12 +6,12 @@ import { Calendar, MapPin, Ticket, ArrowRight, ShieldCheck } from "lucide-react"
 import { api } from "@/lib/api";
 import { requireStaffAuth } from "@/lib/auth";
 import type { EventSummary } from "@/components/EventCard";
+import { toast } from "@/lib/toast";
 
 export default function StaffHomePage() {
   const router = useRouter();
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const session = requireStaffAuth();
@@ -27,7 +27,7 @@ export default function StaffHomePage() {
         setEvents(published);
       })
       .catch((err) => {
-        setError(err.message || "Failed to load events.");
+        toast.error(err.message || "Failed to load events.");
       })
       .finally(() => {
         setLoading(false);
@@ -67,16 +67,6 @@ export default function StaffHomePage() {
                 <div className="h-4 bg-navy/10 rounded w-1/3" />
               </div>
             ))}
-          </div>
-        ) : error ? (
-          <div className="card p-8 text-center border-red-200 bg-red-50 text-red-800">
-            <p className="font-medium">{error}</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="mt-4 btn-primary text-xs"
-            >
-              Retry
-            </button>
           </div>
         ) : events.length === 0 ? (
           <div className="card p-12 text-center text-navy/60">

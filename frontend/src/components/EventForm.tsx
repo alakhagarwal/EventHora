@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { toast } from "@/lib/toast";
 
 export const EVENT_CATEGORIES = ["MUSIC", "DANCE", "CULTURAL", "EDUCATIONAL", "SOCIAL", "SPORTS", "OTHER"] as const;
 
@@ -54,8 +55,8 @@ export default function EventForm({
 
   const doAction = async (fn: () => Promise<any>, label: string) => {
     setBusy(label); setMsg(null);
-    try { const r = await fn(); setMsg({ kind: "ok", text: `${label} successful.` }); onSaved?.(r); return r; }
-    catch (e: any) { setMsg({ kind: "err", text: e.message || "Action failed" }); }
+    try { const r = await fn(); toast.success(`${label} successful.`); onSaved?.(r); return r; }
+    catch (e: any) { toast.error(e.message || "Action failed"); }
     finally { setBusy(null); }
   };
 
@@ -69,16 +70,12 @@ export default function EventForm({
   const cancel = () => currentId && confirm("Cancel this event?") && doAction(() => api.cancelEvent(currentId), "Cancel");
 
   const uploadBanner = async (file: File) => {
-    if (!currentId) { setMsg({ kind: "err", text: "Create draft first, then upload banner." }); return; }
+    if (!currentId) { toast.error("Create draft first, then upload banner."); return; }
     doAction(() => api.uploadBanner(currentId, file), "Banner upload");
   };
 
   return (
     <div className="space-y-8">
-      {msg && (
-        <div className={`rounded-md px-4 py-2 text-sm ${msg.kind === "ok" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-700"}`}>{msg.text}</div>
-      )}
-
       <Section title="Basic details">
         <Grid>
           <Field label="Title"><input className="input" value={values.title} onChange={(e) => set("title", e.target.value)} /></Field>

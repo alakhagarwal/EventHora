@@ -1,10 +1,13 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import EventCard, { type EventSummary } from "@/components/EventCard";
 import { getSession } from "@/lib/auth";
+import SearchInput from "@/components/SearchInput";
+import { toast } from "@/lib/toast";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 export default function AllAdminEvents() {
   const [events, setEvents] = useState<EventSummary[]>([]);
@@ -13,14 +16,19 @@ export default function AllAdminEvents() {
   useEffect(() => {
     const s = getSession();
     if (!s || s.role !== "ADMIN") { router.push("/login"); return; }
-    api.adminEvents().then(setEvents).catch(() => {});
+    api.adminEvents().then(setEvents).catch((err) => toast.error(err.message || "Failed to load events."));
   }, [router]);
+
+  const debouncedQuery = useDebouncedValue(q, 300);
 
   const now = new Date();
   const past = events
     .filter((e) => e.eventDate && new Date(e.eventDate) < now)
     .sort((a, b) => new Date(b.eventDate!).getTime() - new Date(a.eventDate!).getTime());
-  const filtered = past.filter((e) => !q || e.title?.toLowerCase().includes(q.toLowerCase()));
+  const filtered = useMemo(
+    () => past.filter((e) => !debouncedQuery || e.title?.toLowerCase().includes(debouncedQuery.toLowerCase())),
+    [debouncedQuery, past]
+  );
 
   return (
     <div className="mx-auto max-w-7xl px-4 md:px-6 py-8 md:py-12">
@@ -30,7 +38,7 @@ export default function AllAdminEvents() {
           <h1 className="h1 mt-2">Past Events</h1>
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
-          <input className="input" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <SearchInput value={q} onChange={setQ} placeholder="Search by title" className="w-full sm:w-72" />
           <div className="flex gap-2">
             <Link href="/admin/events/public" className="btn-outline flex-1 sm:flex-none">Published</Link>
             <Link href="/admin/events/new" className="btn-primary flex-1 sm:flex-none">+ New</Link>

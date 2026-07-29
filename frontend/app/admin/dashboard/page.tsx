@@ -3,9 +3,12 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Calendar, MapPin, Search } from "lucide-react";
+import { Calendar, MapPin } from "lucide-react";
 import { api, displayStatus } from "@/lib/api";
 import { getSession } from "@/lib/auth";
+import { toast } from "@/lib/toast";
+import SearchInput from "@/components/SearchInput";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 type AdminEvent = {
   id: string;
@@ -98,7 +101,6 @@ export default function AdminDashboardPage() {
   const [events, setEvents] = useState<AdminEvent[]>([]);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [authReady, setAuthReady] = useState(false);
 
@@ -117,16 +119,22 @@ export default function AdminDashboardPage() {
         setStats(statsData);
         setEvents(eventsData || []);
       })
-      .catch((err) => setError(err?.message || "Failed to load events."))
+      .catch((err) => {
+        toast.error(err?.message || "Failed to load events.");
+        setStats(null);
+        setEvents([]);
+      })
       .finally(() => setLoading(false));
   }, [router]);
 
+  const debouncedQuery = useDebouncedValue(query, 300);
+
   const filteredEvents = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedQuery = debouncedQuery.trim().toLowerCase();
     return [...events]
       .sort((a, b) => new Date(b.eventDate || 0).getTime() - new Date(a.eventDate || 0).getTime())
       .filter((event) => !normalizedQuery || (event.title || "").toLowerCase().includes(normalizedQuery));
-  }, [events, query]);
+  }, [debouncedQuery, events]);
 
   if (!authReady) {
     return <div className="mx-auto max-w-7xl px-4 py-12 text-navy/60">Loading...</div>;
@@ -140,15 +148,7 @@ export default function AdminDashboardPage() {
           <h1 className="h1 mt-2">Dashboard</h1>
         </div>
 
-        <div className="relative w-full md:max-w-md">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-navy/40" />
-          <input
-            className="input pl-10"
-            placeholder="Search events by title"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </div>
+        <SearchInput className="w-full md:max-w-md" value={query} onChange={setQuery} placeholder="Search events by title" />
       </div>
 
       <div className="space-y-6 mb-8">
@@ -232,8 +232,6 @@ export default function AdminDashboardPage() {
             </div>
           ))}
         </div>
-      ) : error ? (
-        <div className="card border-red-200 bg-red-50 p-8 text-red-700">{error}</div>
       ) : filteredEvents.length === 0 ? (
         <div className="card p-12 text-center text-navy/60">
           <Calendar className="mx-auto mb-3 h-12 w-12 text-navy/30" />

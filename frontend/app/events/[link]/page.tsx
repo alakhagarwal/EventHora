@@ -1,32 +1,53 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, displayStatus } from "@/lib/api";
 import { Calendar, Clock, MapPin, Phone, User, ArrowLeft } from "lucide-react";
+import { toast } from "@/lib/toast";
 
 export default function EventDetails() {
   const { link } = useParams<{ link: string }>();
   const router = useRouter();
   const [ev, setEv] = useState<any>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const previousSoldOut = useRef(false);
 
   useEffect(() => {
-    api.publicEvent(link).then(setEv).catch((e) => setErr(e.message));
+    let cancelled = false;
+    const load = () =>
+      api.publicEvent(link)
+        .then((nextEvent) => {
+          if (cancelled) return;
+          setEv((current: any) => {
+            if (!previousSoldOut.current && nextEvent?.isSoldOut && current && !current.isSoldOut) {
+              toast.error("This event has just sold out.");
+            }
+            previousSoldOut.current = !!nextEvent?.isSoldOut;
+            return nextEvent;
+          });
+        })
+        .catch((error) => {
+          if (!cancelled) toast.error(error.message || "Failed to load event.");
+        });
+
+    load();
+    const interval = window.setInterval(load, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
   }, [link]);
 
-  if (err && !ev)
-    return (
-      <div className="mx-auto max-w-3xl px-4 py-12 text-red-600">{err}</div>
-    );
   if (!ev)
     return (
       <div className="mx-auto max-w-3xl px-4 py-12 text-navy/60">Loading…</div>
     );
 
   const status = displayStatus(ev);
-  const bookingDisabled =
-    !ev.registrationOpen || status === "COMPLETED" || ev.isSoldOut;
+  const seatsRemaining = Number(ev.availableCount ?? 0);
+  const totalCapacity = Number(ev.totalCapacity ?? 0);
+  const bookedCount = Math.max(0, totalCapacity - seatsRemaining);
+  const bookingDisabled = !ev.registrationOpen || status === "COMPLETED" || ev.isSoldOut || seatsRemaining <= 0;
   const bookLabel =
     status === "COMPLETED"
       ? "Event Completed"
@@ -39,6 +60,9 @@ export default function EventDetails() {
   const handleBook = () => {
     if (!bookingDisabled) router.push(`/events/${link}/book`);
   };
+
+  const seatTone = seatsRemaining <= 0 ? "text-red-700" : seatsRemaining <= 5 ? "text-amber-700" : "text-green-700";
+  const seatBarPercent = totalCapacity ? (bookedCount / totalCapacity) * 100 : 0;
 
   return (
     <>
@@ -74,6 +98,10 @@ export default function EventDetails() {
 
           {/* ── Mobile: compact info box immediately below banner ── */}
           <div className="md:hidden border-b border-navy/10 bg-cream/60 px-4 py-4 flex flex-col gap-2.5 text-sm text-navy/80">
+            <div className={`font-semibold ${seatTone}`}>{seatsRemaining} seats remaining</div>
+            <div className="h-2 overflow-hidden rounded-full bg-navy/10">
+              <div className="h-full rounded-full bg-gold" style={{ width: `${seatBarPercent}%` }} />
+            </div>
             <div className="flex items-center gap-2">
               <MapPin size={15} className="text-gold-600 shrink-0" />
               <span>{ev.venue || "TBA"}</span>
@@ -107,6 +135,10 @@ export default function EventDetails() {
             <div className="md:col-span-2">
               <div className="eyebrow">{ev.category}</div>
               <h1 className="h1 mt-2">{ev.title}</h1>
+              <div className={`mt-3 text-sm font-semibold ${seatTone}`}>{seatsRemaining} seats remaining</div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-navy/10">
+                <div className="h-full rounded-full bg-gold" style={{ width: `${seatBarPercent}%` }} />
+              </div>
 
               {ev.description && (
                 <p className="mt-4 md:mt-6 whitespace-pre-line text-navy/80 leading-relaxed text-sm md:text-base">

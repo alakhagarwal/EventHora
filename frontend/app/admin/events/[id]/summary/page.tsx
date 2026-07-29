@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { getSession } from "@/lib/auth";
+import { toast } from "@/lib/toast";
 
 type PaymentSummary = {
   totalCapacity: number;
@@ -60,7 +61,6 @@ export default function EventPaymentSummaryPage() {
   const [event, setEvent] = useState<{ title?: string; eventDate?: string } | null>(null);
   const [summary, setSummary] = useState<PaymentSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
@@ -78,7 +78,10 @@ export default function EventPaymentSummaryPage() {
         setEvent(eventData);
         setSummary(summaryData);
       })
-      .catch((err) => setError(err?.message || "Failed to load payment summary."))
+      .catch((err) => {
+        toast.error(err?.message || "Failed to load payment summary.");
+        setSummary(null);
+      })
       .finally(() => setLoading(false));
   }, [eventId, router]);
 
@@ -120,8 +123,6 @@ export default function EventPaymentSummaryPage() {
 
       {loading ? (
         <div className="card p-8 text-navy/60">Loading...</div>
-      ) : error ? (
-        <div className="card border-red-200 bg-red-50 p-8 text-red-700">{error}</div>
       ) : summary ? (
         <div className="space-y-6">
           <section className="card p-5 md:p-6">

@@ -5,19 +5,19 @@ import { useRouter } from "next/navigation";
 import { api, displayStatus } from "@/lib/api";
 import EventCard, { type EventSummary } from "@/components/EventCard";
 import { getSession } from "@/lib/auth";
+import { toast } from "@/lib/toast";
 
 const TABS = ["ALL", "DRAFT", "PUBLISHED", "CANCELLED", "COMPLETED"] as const;
 
 export default function MyEvents() {
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [tab, setTab] = useState<(typeof TABS)[number]>("ALL");
-  const [err, setErr] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
     const s = getSession();
     if (!s || s.role !== "ADMIN") { router.push("/login"); return; }
-    api.adminEvents().then(setEvents).catch((e) => setErr(e.message));
+    api.adminEvents().then(setEvents).catch((e) => toast.error(e.message));
   }, [router]);
 
   const filtered = useMemo(() => tab === "ALL" ? events : events.filter((e) => displayStatus(e) === tab), [events, tab]);
@@ -39,7 +39,6 @@ export default function MyEvents() {
           </button>
         ))}
       </div>
-      {err && <div className="text-red-600">{err}</div>}
       {filtered.length === 0 ? (
         <div className="card p-10 text-center text-navy/60">No events in this status.</div>
       ) : (

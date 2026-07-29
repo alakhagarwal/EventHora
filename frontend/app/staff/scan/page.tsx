@@ -7,6 +7,7 @@ import { Camera, QrCode, ArrowLeft, RefreshCw, DollarSign, Gift, AlertCircle, Lo
 import { api } from "@/lib/api";
 import { requireStaffAuth } from "@/lib/auth";
 import type { LookupResponse } from "@/types/staff";
+import { toast } from "@/lib/toast";
 
 interface PendingPaymentInfo {
   ticketReference: string;
@@ -35,7 +36,6 @@ export default function StaffScanPage() {
   const [ticketInput, setTicketInput] = useState("");
   const [processing, setProcessing] = useState(false);
   const [lookupLoading, setLookupLoading] = useState(false);
-  const [inlineError, setInlineError] = useState<string | null>(null);
   const [lookupResult, setLookupResult] = useState<LookupResponse | null>(null);
   const [pendingPayment, setPendingPayment] = useState<PendingPaymentInfo | null>(null);
   const [scannerKey, setScannerKey] = useState(0);
@@ -167,7 +167,6 @@ export default function StaffScanPage() {
     ticketRef = ticketRef.replace(/^EVTHORA:/i, "");
     if (!ticketRef) return;
     setProcessing(true);
-    setInlineError(null);
 
     try {
       // HTTP 200 OK — Successful check-in or duplicate scan
@@ -219,13 +218,12 @@ export default function StaffScanPage() {
     e.preventDefault();
     if (!ticketInput.trim()) return;
     setLookupLoading(true);
-    setInlineError(null);
     setLookupResult(null);
     try {
       const res = await api.lookupTicket(ticketInput.trim().toUpperCase());
       setLookupResult(res);
     } catch (err: any) {
-      setInlineError(err.message || "Ticket not found. Please check the reference and try again.");
+      toast.error(err.message || "Ticket not found. Please check the reference and try again.");
     } finally {
       setLookupLoading(false);
     }
@@ -234,13 +232,12 @@ export default function StaffScanPage() {
   const handleCheckInAfterLookup = async () => {
     if (!lookupResult) return;
     setProcessing(true);
-    setInlineError(null);
     try {
       const res = await api.checkIn({ ticketReference: lookupResult.ticketReference });
       sessionStorage.setItem("scanResult", JSON.stringify(res));
       router.push("/staff/scan/result");
     } catch (err: any) {
-      setInlineError(err.message || "Check-in failed.");
+      toast.error(err.message || "Check-in failed.");
       setProcessing(false);
     }
   };
@@ -248,7 +245,6 @@ export default function StaffScanPage() {
   const clearLookup = () => {
     setLookupResult(null);
     setPendingPayment(null);
-    setInlineError(null);
     setTicketInput("");
   };
 
@@ -256,7 +252,6 @@ export default function StaffScanPage() {
     const ticketRef = pendingPayment?.ticketReference || lookupResult?.ticketReference;
     if (!ticketRef) return;
     setProcessing(true);
-    setInlineError(null);
 
     try {
       const res = await api.recordGatePayment({
@@ -266,7 +261,7 @@ export default function StaffScanPage() {
       sessionStorage.setItem("scanResult", JSON.stringify(res));
       router.push("/staff/scan/result");
     } catch (err: any) {
-      setInlineError(err.message || "Failed to record payment. Please try again.");
+      toast.error(err.message || "Failed to record payment. Please try again.");
       setProcessing(false);
     }
   };
@@ -302,17 +297,6 @@ export default function StaffScanPage() {
             Point camera at member QR code or manually enter ticket reference
           </p>
         </div>
-
-        {/* Inline Error banner */}
-        {inlineError && (
-          <div className="mb-4 card p-4 bg-red-50 border-red-200 text-red-800 flex items-start gap-3 text-sm">
-            <AlertCircle className="h-5 w-5 shrink-0 text-red-600 mt-0.5" />
-            <div className="flex-1">
-              <p className="font-semibold">Action Failed</p>
-              <p className="mt-0.5">{inlineError}</p>
-            </div>
-          </div>
-        )}
 
         {/* Processing Indicator */}
         {processing && (
@@ -422,7 +406,7 @@ export default function StaffScanPage() {
                   <input
                     type="text"
                     value={ticketInput}
-                    onChange={(e) => { setTicketInput(e.target.value.toUpperCase()); setLookupResult(null); setPendingPayment(null); setInlineError(null); }}
+                    onChange={(e) => { setTicketInput(e.target.value.toUpperCase()); setLookupResult(null); setPendingPayment(null); }}
                     placeholder="Enter ticket reference (e.g. TKT-2026-AB12CD)"
                     className="input font-mono uppercase tracking-wider text-center"
                     maxLength={20}

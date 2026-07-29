@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import MobileBottomNav from "@/components/MobileBottomNav";
+import Toast from "@/components/Toast";
+import { ToastProvider } from "@/lib/toast";
 
 export const metadata: Metadata = {
   title: "EventHora — Premier Event Management",
@@ -22,15 +24,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script src="https://checkout.razorpay.com/v1/checkout.js" async />
       </head>
       <body className="min-h-screen">
-        <Navbar />
-        <main className="mobile-safe-bottom">{children}</main>
-        <footer className="border-t border-navy/10 bg-white/60 hidden md:block">
-          <div className="mx-auto max-w-7xl px-6 py-8 flex flex-col md:flex-row justify-between gap-4 text-sm text-navy/60">
-            <div className="font-display text-navy text-lg">EventHora</div>
-            <div>© {new Date().getFullYear()} EventHora. All rights reserved.</div>
-          </div>
-        </footer>
-        <MobileBottomNav />
+        <ToastProvider>
+          <Navbar />
+          <main className="mobile-safe-bottom">{children}</main>
+          <footer className="border-t border-navy/10 bg-white/60 hidden md:block">
+            <div className="mx-auto max-w-7xl px-6 py-8 flex flex-col md:flex-row justify-between gap-4 text-sm text-navy/60">
+              <div className="font-display text-navy text-lg">EventHora</div>
+              <div>© {new Date().getFullYear()} EventHora. All rights reserved.</div>
+            </div>
+          </footer>
+          <MobileBottomNav />
+          <Toast />
+        </ToastProvider>
       </body>
     </html>
   );

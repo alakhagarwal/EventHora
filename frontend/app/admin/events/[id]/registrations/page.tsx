@@ -6,6 +6,9 @@ import { useParams, useRouter } from "next/navigation";
 import { Check, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { getSession } from "@/lib/auth";
+import SearchInput from "@/components/SearchInput";
+import { toast } from "@/lib/toast";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 type RegistrationRow = {
   registrationId: string;
@@ -63,8 +66,8 @@ export default function EventRegistrationsPage() {
   const [event, setEvent] = useState<{ title?: string; eventDate?: string } | null>(null);
   const [registrations, setRegistrations] = useState<RegistrationRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     const session = getSession();
@@ -81,14 +84,30 @@ export default function EventRegistrationsPage() {
         setEvent(eventData);
         setRegistrations(registrationData || []);
       })
-      .catch((err) => setError(err?.message || "Failed to load registrations."))
+      .catch((err) => {
+        toast.error(err?.message || "Failed to load registrations.");
+        setRegistrations([]);
+      })
       .finally(() => setLoading(false));
   }, [eventId, router]);
+
+  const debouncedQuery = useDebouncedValue(query, 300);
 
   const summary = useMemo(() => {
     const ticketCount = registrations.reduce((total, row) => total + (Number(row.quantity) || 0), 0);
     return { registrationsCount: registrations.length, ticketCount };
   }, [registrations]);
+
+  const filteredRegistrations = useMemo(() => {
+    const normalizedQuery = debouncedQuery.trim().toLowerCase();
+    return registrations.filter((registration) => {
+      if (!normalizedQuery) return true;
+      return (
+        registration.ticketReference.toLowerCase().includes(normalizedQuery) ||
+        registration.memberId.toLowerCase().includes(normalizedQuery)
+      );
+    });
+  }, [debouncedQuery, registrations]);
 
   if (!authReady) {
     return <div className="mx-auto max-w-7xl px-4 py-12 text-navy/60">Loading...</div>;
@@ -115,12 +134,11 @@ export default function EventRegistrationsPage() {
 
       {loading ? (
         <div className="card p-8 text-navy/60">Loading...</div>
-      ) : error ? (
-        <div className="card border-red-200 bg-red-50 p-8 text-red-700">{error}</div>
       ) : registrations.length === 0 ? (
         <div className="card p-12 text-center text-navy/60">No registrations found for this event.</div>
       ) : (
         <div className="space-y-4">
+          <SearchInput value={query} onChange={setQuery} placeholder="Search by ticket reference or member ID" className="w-full md:max-w-md" />
           <div className="card px-5 py-4 text-sm font-medium text-navy">
             {summary.registrationsCount} registrations · {summary.ticketCount} total tickets
           </div>
@@ -140,7 +158,7 @@ export default function EventRegistrationsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-navy/10 bg-white">
-                {registrations.map((registration) => (
+                {filteredRegistrations.map((registration) => (
                   <tr key={registration.registrationId} className="align-top">
                     <td className="px-4 py-3 font-medium text-navy">{registration.ticketReference}</td>
                     <td className="px-4 py-3 text-navy/80">{registration.memberId}</td>
@@ -165,6 +183,9 @@ export default function EventRegistrationsPage() {
               </tbody>
             </table>
           </div>
+          {filteredRegistrations.length === 0 && (
+            <div className="card p-10 text-center text-navy/60">No registrations match your search.</div>
+          )}
         </div>
       )}
     </div>

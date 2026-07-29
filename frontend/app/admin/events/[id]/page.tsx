@@ -5,6 +5,7 @@ import Link from "next/link";
 import { api, displayStatus } from "@/lib/api";
 import EventForm from "@/components/EventForm";
 import { getSession } from "@/lib/auth";
+import { toast } from "@/lib/toast";
 
 export default function EditEvent() {
   const { id } = useParams<{ id: string }>();
@@ -14,10 +15,9 @@ export default function EditEvent() {
 
   useEffect(() => {
     const s = getSession(); if (!s || s.role !== "ADMIN") { router.push("/login"); return; }
-    api.adminEvent(id).then(setEv).catch((e) => setErr(e.message));
+    api.adminEvent(id).then(setEv).catch((e) => toast.error(e.message));
   }, [id, router]);
 
-  if (err) return <div className="mx-auto max-w-3xl px-6 py-16 text-red-600">{err}</div>;
   if (!ev) return <div className="mx-auto max-w-3xl px-6 py-16 text-navy/60">Loading…</div>;
 
   const initial = {
