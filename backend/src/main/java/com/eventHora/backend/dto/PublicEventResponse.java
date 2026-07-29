@@ -18,9 +18,10 @@ import java.util.UUID;
  *   - platformFeePerTicket (internal billing detail)
  *   - createdBy (internal audit)
  *   - status (always PUBLISHED for this endpoint)
- *   - bookedCount / availableCount (prevents gaming capacity)
  *
- * Maps to: GET /api/events/{uniqueEventLink}
+ * Maps to:
+ *   GET /api/events            (public listing)
+ *   GET /api/events/{link}     (public detail / booking page)
  */
 @Data
 @Builder
@@ -56,6 +57,10 @@ public class PublicEventResponse {
     // Contact
     private String contactPersonName;
     private String contactPersonPhone;
+
+    // Capacity
+    private int totalCapacity;                    // Maximum total tickets for the event
+    private int availableCount;                   // Remaining seats (totalCapacity - lockedTickets)
 
     // Registration
     private String uniqueEventLink;
