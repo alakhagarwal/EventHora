@@ -2,8 +2,6 @@ package com.eventHora.backend.dto;
 
 import com.eventHora.backend.Enum.EventCategory;
 import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.Future;
-import jakarta.validation.constraints.FutureOrPresent;
 import jakarta.validation.constraints.Min;
 import lombok.Data;
 
@@ -26,13 +24,14 @@ public class UpdateEventRequest {
     private EventCategory category;
     private String bannerUrl;
 
-    @FutureOrPresent(message = "Event date cannot be in the past")
     private LocalDate eventDate;
 
     private LocalTime startTime;
     private LocalTime endTime;
 
-    @Future(message = "Registration deadline must be in the future")
+    // No @Future here — for partial updates the existing date is preserved as-is
+    // when the admin doesn't change the field. Validation is enforced at creation time
+    // via CreateEventRequest which still has @Future on registrationDeadline.
     private LocalDateTime registrationDeadline;
 
     private String venue;

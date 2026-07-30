@@ -37,11 +37,13 @@ const empty: EventFormValues = {
 export default function EventForm({
   eventId,
   initial,
+  eventStatus,
   onSaved,
   onPublished,
 }: {
   eventId?: string;
   initial?: Partial<EventFormValues> & EventFormMeta;
+  eventStatus?: "DRAFT" | "PUBLISHED" | "CANCELLED" | "COMPLETED";
   onSaved?: (ev: any) => void;
   onPublished?: (ev: any) => void;
 }) {
@@ -58,10 +60,17 @@ export default function EventForm({
 
   const set = <K extends keyof EventFormValues>(k: K, v: EventFormValues[K]) => setValues((s) => ({ ...s, [k]: v }));
 
-  const buildPayload = () => ({
-    ...values,
-    minimumAge: values.minimumAge === null || Number.isNaN(values.minimumAge) ? null : Number(values.minimumAge),
-  });
+  const buildPayload = () => {
+    // Exclude bannerUrl — it's a pre-signed S3 URL from the API response and must NOT
+    // be sent back in the PATCH body. The backend would store the temporary URL in the DB,
+    // breaking the banner after 7 days. Banner changes use POST /api/events/{id}/banner.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { bannerUrl: _banner, ...rest } = values as any;
+    return {
+      ...rest,
+      minimumAge: values.minimumAge === null || Number.isNaN(values.minimumAge) ? null : Number(values.minimumAge),
+    };
+  };
 
   const doAction = async (fn: () => Promise<any>, label: string) => {
     setBusy(label); setMsg(null);
@@ -112,7 +121,21 @@ export default function EventForm({
       setBusy(null);
     }
   };
-  const cancel = () => currentId && confirm("Cancel this event?") && doAction(() => api.cancelEvent(currentId), "Cancel");
+  const cancel = () =>
+    currentId &&
+    confirm("Cancel this event? This cannot be undone.") &&
+    (async () => {
+      setBusy("Cancel"); setMsg(null);
+      try {
+        await api.cancelEvent(currentId);
+        toast.success("Event cancelled.");
+        onPublished?.(null); // reuse navigation hook — parent routes to /admin/my-events
+      } catch (e: any) {
+        toast.error(e.message || "Cancel failed");
+      } finally {
+        setBusy(null);
+      }
+    })();
 
   const handleFileSelect = (file: File) => {
     if (currentId) {
@@ -225,12 +248,38 @@ export default function EventForm({
 
       <div className="flex flex-wrap gap-2 sticky bottom-0 bg-cream/90 backdrop-blur border-t border-navy/10 p-3 -mx-4">
         {!currentId ? (
-          <button className="btn-dark" disabled={busy !== null} onClick={createDraft}>{busy === "Create draft" ? "Creating…" : "Create Draft"}</button>
+          // New event — not yet saved
+          <button className="btn-dark" disabled={busy !== null} onClick={createDraft}>
+            {busy === "Create draft" ? "Creating…" : "Create Draft"}
+          </button>
         ) : (
           <>
-            <button className="btn-dark" disabled={busy !== null} onClick={saveDraft}>{busy === "Save" ? "Saving…" : "Save Draft"}</button>
-            <button className="btn-primary" disabled={busy !== null} onClick={publish}>{busy === "Publish" ? "Publishing…" : "Publish"}</button>
-            <button className="btn-outline text-red-700 border-red-200 hover:bg-red-50" disabled={busy !== null} onClick={cancel}>Cancel Event</button>
+            {/* Save — label changes based on current status */}
+            <button className="btn-dark" disabled={busy !== null} onClick={saveDraft}>
+              {busy === "Save"
+                ? "Saving…"
+                : eventStatus === "DRAFT"
+                ? "Save Draft"
+                : "Save Changes"}
+            </button>
+
+            {/* Publish — only shown for DRAFT events */}
+            {(!eventStatus || eventStatus === "DRAFT") && (
+              <button className="btn-primary" disabled={busy !== null} onClick={publish}>
+                {busy === "Publish" ? "Publishing…" : "Publish"}
+              </button>
+            )}
+
+            {/* Cancel — only shown if not already cancelled or completed */}
+            {(!eventStatus || (eventStatus !== "CANCELLED" && eventStatus !== "COMPLETED")) && (
+              <button
+                className="btn-outline text-red-700 border-red-200 hover:bg-red-50"
+                disabled={busy !== null}
+                onClick={cancel}
+              >
+                {busy === "Cancel" ? "Cancelling…" : "Cancel Event"}
+              </button>
+            )}
           </>
         )}
       </div>
