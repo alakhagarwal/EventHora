@@ -3,6 +3,7 @@ package com.eventHora.backend.dto;
 import com.eventHora.backend.Enum.MemberType;
 import com.eventHora.backend.Enum.PaymentPreference;
 import com.eventHora.backend.Enum.PaymentStatus;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Data;
 
@@ -31,6 +32,7 @@ public class RegistrationSummaryResponse {
     private BigDecimal totalAmount;       // Total amount for this booking
     private PaymentStatus paymentStatus;  // Current status: CONFIRMED, FREE, PAY_AT_GATE, etc.
     private PaymentPreference paymentPreference; // How the member chose to pay: ONLINE or PAY_AT_GATE
+    @JsonProperty("isCheckedIn")
     private boolean isCheckedIn;          // Whether the member has been scanned at the gate
     private LocalDateTime checkedInAt;   // Gate check-in timestamp — null if not yet checked in
     private LocalDateTime bookedAt;      // When the booking was created

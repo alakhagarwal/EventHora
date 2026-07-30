@@ -2,6 +2,7 @@ package com.eventHora.backend.dto;
 
 import com.eventHora.backend.Enum.PaymentPreference;
 import com.eventHora.backend.Enum.PaymentStatus;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Data;
 
@@ -37,6 +38,7 @@ public class MyBookingResponse {
 
     // ─── Gate Check-In ────────────────────────────────────────────────────────
 
+    @JsonProperty("isCheckedIn")
     private boolean isCheckedIn;           // Has the member been scanned at the gate?
     private LocalDateTime checkedInAt;    // Gate check-in timestamp — null if not yet checked in
 
