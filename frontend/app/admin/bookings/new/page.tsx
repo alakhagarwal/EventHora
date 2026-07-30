@@ -16,6 +16,7 @@ type PublishedEvent = {
   status?: string;
   ticketPrice?: number;
   maxTicketsPerMember?: number;
+  freeTicketsPerRegistration?: number;
   venue?: string;
   availableCount?: number;
   totalCapacity?: number;
@@ -76,17 +77,34 @@ export default function AdminDirectBookingPage() {
     setAuthReady(true);
     setLoading(true);
     api.adminEvents()
-      .then((data) => {
+      .then(async (data) => {
         const published = (data || []).filter((event: PublishedEvent) => event.status === "PUBLISHED");
-        setEvents(published);
-        if (published.length > 0) {
-          setForm((current) => ({ ...current, eventId: current.eventId || published[0].id }));
+        const detailedEvents = await Promise.all(
+          published.map(async (event: PublishedEvent) => {
+            try {
+              const full = await api.adminEvent(event.id);
+              return {
+                ...event,
+                ...full,
+                isSoldOut: Number(full.availableCount ?? event.availableCount ?? 0) <= 0,
+              };
+            } catch {
+              return {
+                ...event,
+                isSoldOut: Number(event.availableCount ?? 0) <= 0,
+              };
+            }
+          })
+        );
+        setEvents(detailedEvents);
+        if (detailedEvents.length > 0) {
+          setForm((current) => ({ ...current, eventId: current.eventId || detailedEvents[0].id }));
         }
       })
-        .catch((err) => {
-          toast.error(err?.message || "Failed to load events.");
-          setEvents([]);
-        })
+      .catch((err) => {
+        toast.error(err?.message || "Failed to load events.");
+        setEvents([]);
+      })
       .finally(() => setLoading(false));
   }, [router]);
 
@@ -103,8 +121,10 @@ export default function AdminDirectBookingPage() {
 
   const ticketPrice = Number(selectedEvent?.ticketPrice || 0);
   const maxTickets = Number(selectedEvent?.maxTicketsPerMember || 1);
-  const isFreeEvent = ticketPrice <= 0;
-  const orderTotal = isFreeEvent ? 0 : ticketPrice * form.quantity;
+  const freeTickets = Number(selectedEvent?.freeTicketsPerRegistration || 0);
+  const paidTickets = Math.max(0, form.quantity - freeTickets);
+  const orderTotal = ticketPrice * paidTickets;
+  const isFreeEvent = orderTotal <= 0;
 
   const updateQuantity = (delta: number) => {
     setForm((current) => {
@@ -142,15 +162,15 @@ export default function AdminDirectBookingPage() {
       });
       toast.success(`Member registered: ${response.ticketReference}`);
       const params = new URLSearchParams({
-        ticketReference: response.ticketReference,
-        quantity: String(response.quantity),
-        totalAmount: String(response.totalAmount),
-        paymentStatus: response.paymentStatus,
-        memberId: response.memberId,
-        eventTitle: response.eventTitle,
-        eventDate: response.eventDate,
-        eventStartTime: response.eventStartTime || "",
-        eventVenue: response.eventVenue || "",
+        ticketReference: response.ticketReference || "",
+        quantity: String(response.quantity || form.quantity),
+        totalAmount: String(response.totalAmount ?? 0),
+        paymentStatus: response.paymentStatus || "FREE",
+        memberId: response.memberId || trimmedMemberId,
+        eventTitle: response.eventTitle || selectedEvent.title || "",
+        eventDate: response.eventDate || selectedEvent.eventDate || "",
+        eventStartTime: response.eventStartTime || selectedEvent.startTime || "",
+        eventVenue: response.eventVenue || selectedEvent.venue || "",
         bookedBy: response.bookedBy || "",
         bookedAt: response.bookedAt || "",
       });
@@ -277,8 +297,15 @@ export default function AdminDirectBookingPage() {
           <div className="card bg-navy/5 p-4">
             <div className="label">Order Summary</div>
             <div className="text-lg font-semibold text-navy">
-              {isFreeEvent ? "Free" : `${form.quantity} × ${formatAmount(ticketPrice)} = ${formatAmount(orderTotal)}`}
+              {isFreeEvent
+                ? "Free"
+                : `${paidTickets} × ${formatAmount(ticketPrice)} = ${formatAmount(orderTotal)}`}
             </div>
+            {freeTickets > 0 && form.quantity > 0 && (
+              <div className="text-xs text-green-700 font-medium">
+                Includes {Math.min(form.quantity, freeTickets)} free ticket(s) per registration
+              </div>
+            )}
             <div className="mt-1 text-sm text-navy/70">
               {selectedEvent ? `${selectedEvent.title} · ${formatDateTime(selectedEvent.eventDate, selectedEvent.startTime)}` : "Select an event to continue"}
             </div>

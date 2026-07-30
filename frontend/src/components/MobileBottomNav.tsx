@@ -121,9 +121,7 @@ function getNavItems(session: Session, hasMemberSession: boolean): NavItem[] {
     items.push({ label: "Profile", href: "/profile", icon: UserIcon, matchPaths: ["/profile"] });
   } else if (session?.role === "STAFF") {
     items.push({ label: "Profile", href: "/profile", icon: UserIcon, matchPaths: ["/profile"] });
-  } else if (hasMemberSession) {
-    items.push({ label: "Profile", href: "/profile", icon: UserIcon, matchPaths: ["/profile"] });
-  } else {
+  } else if (!hasMemberSession) {
     items.push({ label: "Sign In", href: "/login", icon: LoginIcon, matchPaths: ["/login"] });
   }
 
