@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
+import { Upload } from "lucide-react";
 
 export const EVENT_CATEGORIES = ["MUSIC", "DANCE", "CULTURAL", "EDUCATIONAL", "SOCIAL", "SPORTS", "OTHER"] as const;
 
@@ -15,6 +16,10 @@ export type EventFormValues = {
   minimumAge: number | null;
   importantNotes: string[];
   contactPersonName: string; contactPersonPhone: string;
+};
+
+export type EventFormMeta = {
+  bannerUrl?: string | null;
 };
 
 const empty: EventFormValues = {
@@ -33,18 +38,23 @@ export default function EventForm({
   eventId,
   initial,
   onSaved,
+  onPublished,
 }: {
   eventId?: string;
-  initial?: Partial<EventFormValues>;
+  initial?: Partial<EventFormValues> & EventFormMeta;
   onSaved?: (ev: any) => void;
+  onPublished?: (ev: any) => void;
 }) {
   const [values, setValues] = useState<EventFormValues>({ ...empty, ...initial });
   const [noteInput, setNoteInput] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [currentId, setCurrentId] = useState<string | undefined>(eventId);
+  const [bannerUrl, setBannerUrl] = useState<string | null>(initial?.bannerUrl ?? null);
+  const [pendingBanner, setPendingBanner] = useState<File | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { if (initial) setValues((v) => ({ ...v, ...initial })); }, [initial]);
+  useEffect(() => { if (initial) { setValues((v) => ({ ...v, ...initial })); if (initial.bannerUrl) setBannerUrl(initial.bannerUrl); } }, [initial]);
 
   const set = <K extends keyof EventFormValues>(k: K, v: EventFormValues[K]) => setValues((s) => ({ ...s, [k]: v }));
 
@@ -60,18 +70,58 @@ export default function EventForm({
     finally { setBusy(null); }
   };
 
+  const doBannerUpload = async (id: string, file: File) => {
+    setBusy("Upload");
+    try {
+      const r = await api.uploadBanner(id, file);
+      setBannerUrl(r.bannerUrl);
+      onSaved?.(r);
+      return r;
+    } catch (e: any) {
+      toast.error(e.message || "Banner upload failed");
+      throw e;
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const createDraft = () => doAction(async () => {
     const r: any = await api.createEvent(buildPayload());
-    if (r?.id) setCurrentId(r.id);
+    if (r?.id) {
+      setCurrentId(r.id);
+      if (r.bannerUrl) setBannerUrl(r.bannerUrl);
+      if (pendingBanner) {
+        await doBannerUpload(r.id, pendingBanner);
+        setPendingBanner(null);
+      }
+    }
     return r;
   }, "Create draft");
+
   const saveDraft = () => currentId && doAction(() => api.updateEvent(currentId, buildPayload()), "Save");
-  const publish = () => currentId && doAction(() => api.publishEvent(currentId), "Publish");
+  const publish = async () => {
+    if (!currentId) return;
+    setBusy("Publish"); setMsg(null);
+    try {
+      const r = await api.publishEvent(currentId);
+      toast.success("Publish successful.");
+      onPublished?.(r);
+    } catch (e: any) {
+      toast.error(e.message || "Action failed");
+    } finally {
+      setBusy(null);
+    }
+  };
   const cancel = () => currentId && confirm("Cancel this event?") && doAction(() => api.cancelEvent(currentId), "Cancel");
 
-  const uploadBanner = async (file: File) => {
-    if (!currentId) { toast.error("Create draft first, then upload banner."); return; }
-    doAction(() => api.uploadBanner(currentId, file), "Banner upload");
+  const handleFileSelect = (file: File) => {
+    if (currentId) {
+      doBannerUpload(currentId, file);
+    } else {
+      setPendingBanner(file);
+      setBannerUrl(URL.createObjectURL(file));
+    }
+    if (fileRef.current) fileRef.current.value = "";
   };
 
   return (
@@ -86,6 +136,42 @@ export default function EventForm({
           </Field>
         </Grid>
         <Field label="Description"><textarea rows={5} className="input" value={values.description} onChange={(e) => set("description", e.target.value)} /></Field>
+      </Section>
+
+      <Section title="Banner">
+        <div
+          className="relative flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-navy/20 bg-navy/5 p-6 transition-colors hover:border-gold/50 hover:bg-gold/5"
+          onClick={() => fileRef.current?.click()}
+        >
+          {bannerUrl ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={bannerUrl} alt="Banner preview" className="max-h-48 w-full rounded-lg object-cover" />
+              <button
+                type="button"
+                className="btn-outline mt-3 text-xs"
+                onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }}
+              >
+                Change banner
+              </button>
+            </>
+          ) : (
+            <>
+              <Upload className="mb-2 h-8 w-8 text-navy/30" />
+              <p className="text-sm font-medium text-navy/60">Click to upload a banner image</p>
+              <p className="mt-1 text-xs text-navy/40">
+                {pendingBanner ? `${pendingBanner.name} (pending — will upload on save)` : "Recommended: 1200×600px"}
+              </p>
+            </>
+          )}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
+          />
+        </div>
       </Section>
 
       <Section title="Schedule">
@@ -135,11 +221,6 @@ export default function EventForm({
           <Field label="Contact Person"><input className="input" value={values.contactPersonName} onChange={(e) => set("contactPersonName", e.target.value)} /></Field>
           <Field label="Contact Phone"><input className="input" value={values.contactPersonPhone} onChange={(e) => set("contactPersonPhone", e.target.value)} /></Field>
         </Grid>
-      </Section>
-
-      <Section title="Banner">
-        <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && uploadBanner(e.target.files[0])} />
-        <p className="text-xs text-navy/50 mt-1">Available after the event is created.</p>
       </Section>
 
       <div className="flex flex-wrap gap-2 sticky bottom-0 bg-cream/90 backdrop-blur border-t border-navy/10 p-3 -mx-4">

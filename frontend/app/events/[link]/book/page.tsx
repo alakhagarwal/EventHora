@@ -96,7 +96,9 @@ export default function BookEventPage() {
       );
       router.push("/member/otp");
     } catch (e: any) {
-      setErr(e.message || "Could not initiate booking");
+      const msg = e.message || "Could not initiate booking";
+      setErr(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }

@@ -17,20 +17,9 @@ type PublishedEvent = {
   ticketPrice?: number;
   maxTicketsPerMember?: number;
   venue?: string;
-};
-
-type BookingSuccess = {
-  ticketReference: string;
-  quantity: number;
-  totalAmount: number;
-  paymentStatus: string;
-  memberId: string;
-  eventTitle: string;
-  eventDate: string;
-  eventStartTime?: string;
-  eventVenue?: string;
-  bookedBy: string;
-  bookedAt: string;
+  availableCount?: number;
+  totalCapacity?: number;
+  isSoldOut?: boolean;
 };
 
 function formatDateTime(value?: string, timeValue?: string) {
@@ -152,7 +141,20 @@ export default function AdminDirectBookingPage() {
         action: isFreeEvent ? "PAY_AT_GATE" : form.action,
       });
       toast.success(`Member registered: ${response.ticketReference}`);
-      setForm((current) => resetFormState(current.eventId || events[0]?.id || ""));
+      const params = new URLSearchParams({
+        ticketReference: response.ticketReference,
+        quantity: String(response.quantity),
+        totalAmount: String(response.totalAmount),
+        paymentStatus: response.paymentStatus,
+        memberId: response.memberId,
+        eventTitle: response.eventTitle,
+        eventDate: response.eventDate,
+        eventStartTime: response.eventStartTime || "",
+        eventVenue: response.eventVenue || "",
+        bookedBy: response.bookedBy || "",
+        bookedAt: response.bookedAt || "",
+      });
+      router.push(`/admin/bookings/success?${params.toString()}`);
     } catch (err: any) {
       const status = err?.status;
       if (status === 409) {

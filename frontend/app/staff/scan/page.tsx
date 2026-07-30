@@ -268,7 +268,6 @@ export default function StaffScanPage() {
 
   const restartScanner = () => {
     setPendingPayment(null);
-    setInlineError(null);
     setTicketInput("");
     setScannerKey((prev) => prev + 1);
   };

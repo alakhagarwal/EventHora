@@ -38,7 +38,7 @@ export default function LoginPage() {
       </div>
 
       <div className="card p-4 md:p-8">
-        {tab === "staff" && <StaffForm onDone={(role) => router.push(role === "ADMIN" ? "/admin/my-events" : "/profile")} />}
+        {tab === "staff" && <StaffForm onDone={(role) => router.push(role === "ADMIN" ? "/admin/my-events" : "/")} />}
         {tab === "indian" && <MemberForm memberType="INDIAN" onDone={() => router.push("/events")} />}
         {tab === "overseas" && <MemberForm memberType="OVERSEAS" onDone={() => router.push("/events")} />}
       </div>

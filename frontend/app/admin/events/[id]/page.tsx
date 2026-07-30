@@ -36,7 +36,7 @@ export default function EditEvent() {
         </div>
         <Link href={`/admin/events/${id}/details`} className="btn-outline">View Details</Link>
       </div>
-      <EventForm eventId={id} initial={initial} onSaved={(r) => r && setEv(r)} />
+      <EventForm eventId={id} initial={initial} onSaved={(r) => r && setEv(r)} onPublished={() => router.push("/admin/my-events")} />
     </div>
   );
 }

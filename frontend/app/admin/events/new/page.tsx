@@ -11,7 +11,10 @@ export default function NewEvent() {
     <div className="mx-auto max-w-5xl px-6 py-12">
       <div className="eyebrow">Admin</div>
       <h1 className="h1 mt-2 mb-8">Create Event</h1>
-      <EventForm onSaved={(r) => { if (r?.id) router.push(`/admin/events/${r.id}`); }} />
+      <EventForm
+        onSaved={(r) => { if (r?.id) router.push(`/admin/events/${r.id}`); }}
+        onPublished={() => router.push("/admin/my-events")}
+      />
     </div>
   );
 }

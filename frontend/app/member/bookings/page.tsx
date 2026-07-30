@@ -134,7 +134,7 @@ export default function MemberBookingsPage() {
       <div className="mb-6">
         <div className="eyebrow">Member</div>
         <h1 className="h1 mt-2">My Bookings</h1>
-        {!loading && !error && bookings.length > 0 && (
+        {!loading && bookings.length > 0 && (
           <p className="mt-2 text-sm text-navy/70">{bookingCount} booking{bookingCount === 1 ? "" : "s"} found</p>
         )}
       </div>

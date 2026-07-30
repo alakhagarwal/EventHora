@@ -41,12 +41,6 @@ const icons = {
       <path d="M16 11h6" />
     </svg>
   ),
-  allEvents: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
-      <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
-    </svg>
-  ),
   users: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
@@ -139,7 +133,7 @@ export default function Navbar() {
           {/* Center: desktop nav links */}
           <nav className="hidden md:flex items-center gap-8">
             <Link href="/" className={linkCls("/")}>Home</Link>
-            <Link href="/events" className={linkCls("/events")}>Events</Link>
+            {!is_staff_or_admin && <Link href="/events" className={linkCls("/events")}>Events</Link>}
             {is_staff_or_admin && (
               <Link href="/staff" className={linkCls("/staff")}>Gate Scanner</Link>
             )}
@@ -148,7 +142,6 @@ export default function Navbar() {
                 <Link href="/admin/dashboard" className={linkCls("/admin/dashboard")}>Dashboard</Link>
                 <Link href="/admin/my-events" className={linkCls("/admin/my-events")}>My Events</Link>
                 <Link href="/admin/bookings/new" className={linkCls("/admin/bookings/new")}>Register Member</Link>
-                <Link href="/admin/events" className={linkCls("/admin/events")}>All Events</Link>
                 <Link href="/admin/users" className={linkCls("/admin/users")}>Users</Link>
               </>
             )}
@@ -197,9 +190,11 @@ export default function Navbar() {
               <Link href="/" className={drawerLinkCls("/")} onClick={() => setDrawerOpen(false)}>
                 {icons.home} Home
               </Link>
-              <Link href="/events" className={drawerLinkCls("/events")} onClick={() => setDrawerOpen(false)}>
-                {icons.events} Events
-              </Link>
+              {!is_staff_or_admin && (
+                <Link href="/events" className={drawerLinkCls("/events")} onClick={() => setDrawerOpen(false)}>
+                  {icons.events} Events
+                </Link>
+              )}
 
               {!session && memberSession && (
                 <Link href="/member/bookings" className={drawerLinkCls("/member/bookings")} onClick={() => setDrawerOpen(false)}>
@@ -224,9 +219,6 @@ export default function Navbar() {
                   </Link>
                   <Link href="/admin/bookings/new" className={drawerLinkCls("/admin/bookings/new")} onClick={() => setDrawerOpen(false)}>
                     {icons.registerMember} Register Member
-                  </Link>
-                  <Link href="/admin/events" className={drawerLinkCls("/admin/events")} onClick={() => setDrawerOpen(false)}>
-                    {icons.allEvents} All Events
                   </Link>
                   <Link href="/admin/users" className={drawerLinkCls("/admin/users")} onClick={() => setDrawerOpen(false)}>
                     {icons.users} Users

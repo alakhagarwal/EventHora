@@ -89,7 +89,7 @@ export default function Landing() {
           <div className="card p-10 text-center text-navy/60">No published events yet.</div>
         ) : (
           <div className="grid gap-4 md:gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {events.filter((e) => !e.eventDate || new Date(e.eventDate) >= new Date()).slice(0, 6).map((e) => (
+            {events.filter((e) => !e.eventDate || new Date(e.eventDate) >= new Date()).slice(0, 3).map((e) => (
               <EventCard key={e.id} event={e} href={`/events/${e.uniqueEventLink}`} actionLabel="Book Now" />
             ))}
           </div>
