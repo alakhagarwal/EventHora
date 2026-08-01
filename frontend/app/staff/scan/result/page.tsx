@@ -62,16 +62,16 @@ export default function ScanResultPage() {
 
   // Render Green, Yellow, or Red Screen
   return (
-    <div className="min-h-[calc(100vh-80px)] bg-cream py-8 px-4 md:px-6 flex items-center justify-center">
-      <div className="mx-auto max-w-lg w-full">
+    <div className="bg-cream flex items-stretch justify-center h-[calc(100vh-8.5rem)] min-h-0 px-3 py-3 md:h-auto md:min-h-[calc(100vh-80px)] md:items-center md:px-6 md:py-8">
+      <div className="mx-auto max-w-lg w-full flex flex-col min-h-0">
         {/* GREEN SCREEN — Check-in Successful */}
         {!isError && !isDuplicate && (
-          <div className="card overflow-hidden border-2 border-green-300 bg-green-50/90 text-green-900 shadow-lg p-6 md:p-8 space-y-6">
-            <div className="text-center space-y-3">
-              <div className="inline-grid h-20 w-20 place-items-center rounded-full bg-green-100 text-green-600 shadow-inner mx-auto">
-                <CheckCircle2 className="h-12 w-12" />
+          <div className="card overflow-hidden border-2 border-green-300 bg-green-50/90 text-green-900 shadow-lg p-4 md:p-8 space-y-3 md:space-y-6 flex flex-col flex-1 min-h-0">
+            <div className="text-center space-y-1.5 md:space-y-3 shrink-0">
+              <div className="inline-grid h-16 w-16 md:h-20 md:w-20 place-items-center rounded-full bg-green-100 text-green-600 shadow-inner mx-auto">
+                <CheckCircle2 className="h-9 w-9 md:h-12 md:w-12" />
               </div>
-              <h1 className="font-display text-2xl md:text-3xl font-bold text-green-900">
+              <h1 className="font-display text-xl md:text-3xl font-bold text-green-900">
                 Check-in Successful
               </h1>
               <span className="chip bg-green-200 text-green-800 text-xs font-semibold px-3 py-1">
@@ -79,7 +79,7 @@ export default function ScanResultPage() {
               </span>
             </div>
 
-            <div className="bg-white/80 backdrop-blur rounded-xl p-5 space-y-3 text-sm text-green-950 border border-green-200/60 shadow-sm">
+            <div className="bg-white/80 backdrop-blur rounded-xl p-3.5 md:p-5 space-y-1.5 md:space-y-3 text-sm text-green-950 border border-green-200/60 shadow-sm flex-1 overflow-y-auto min-h-0">
               <div className="flex items-center justify-between py-1 border-b border-green-100">
                 <span className="text-green-800/80 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider">
                   Ticket Reference
@@ -124,7 +124,7 @@ export default function ScanResultPage() {
 
             <button
               onClick={handleScanNext}
-              className="btn-primary w-full py-4 text-base font-bold flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+              className="btn-primary w-full py-3 md:py-4 text-base font-bold flex items-center justify-center gap-2 shadow-md hover:shadow-lg shrink-0"
             >
               Scan Next <ArrowRight className="h-5 w-5" />
             </button>
@@ -133,12 +133,12 @@ export default function ScanResultPage() {
 
         {/* YELLOW SCREEN — Already Checked In */}
         {!isError && isDuplicate && (
-          <div className="card overflow-hidden border-2 border-amber-300 bg-amber-50/90 text-amber-900 shadow-lg p-6 md:p-8 space-y-6">
-            <div className="text-center space-y-3">
-              <div className="inline-grid h-20 w-20 place-items-center rounded-full bg-amber-100 text-amber-600 shadow-inner mx-auto">
-                <AlertTriangle className="h-12 w-12" />
+          <div className="card overflow-hidden border-2 border-amber-300 bg-amber-50/90 text-amber-900 shadow-lg p-4 md:p-8 space-y-3 md:space-y-6 flex flex-col flex-1 min-h-0">
+            <div className="text-center space-y-1.5 md:space-y-3 shrink-0">
+              <div className="inline-grid h-16 w-16 md:h-20 md:w-20 place-items-center rounded-full bg-amber-100 text-amber-600 shadow-inner mx-auto">
+                <AlertTriangle className="h-9 w-9 md:h-12 md:w-12" />
               </div>
-              <h1 className="font-display text-2xl md:text-3xl font-bold text-amber-950">
+              <h1 className="font-display text-xl md:text-3xl font-bold text-amber-950">
                 Already Checked In
               </h1>
               <p className="text-xs md:text-sm text-amber-800 font-medium max-w-sm mx-auto">
@@ -146,7 +146,7 @@ export default function ScanResultPage() {
               </p>
             </div>
 
-            <div className="bg-white/80 backdrop-blur rounded-xl p-5 space-y-3 text-sm text-amber-950 border border-amber-200/60 shadow-sm">
+            <div className="bg-white/80 backdrop-blur rounded-xl p-3.5 md:p-5 space-y-1.5 md:space-y-3 text-sm text-amber-950 border border-amber-200/60 shadow-sm flex-1 overflow-y-auto min-h-0">
               <div className="flex items-center justify-between py-1 border-b border-amber-100">
                 <span className="text-amber-800/80 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider">
                   Ticket Reference
@@ -189,13 +189,13 @@ export default function ScanResultPage() {
               )}
             </div>
 
-            <div className="p-3 bg-amber-100/60 rounded-lg text-xs text-amber-900 text-center font-medium">
+            <div className="p-3 bg-amber-100/60 rounded-lg text-xs text-amber-900 text-center font-medium shrink-0">
               💡 Staff note: Please verify visually if this is the same attendee or shared ticket.
             </div>
 
             <button
               onClick={handleScanNext}
-              className="btn-primary w-full py-4 text-base font-bold flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+              className="btn-primary w-full py-3 md:py-4 text-base font-bold flex items-center justify-center gap-2 shadow-md hover:shadow-lg shrink-0"
             >
               Scan Next <ArrowRight className="h-5 w-5" />
             </button>
@@ -204,17 +204,17 @@ export default function ScanResultPage() {
 
         {/* RED SCREEN — Entry Denied */}
         {isError && (
-          <div className="card overflow-hidden border-2 border-red-300 bg-red-50/90 text-red-950 shadow-lg p-6 md:p-8 space-y-6">
-            <div className="text-center space-y-3">
-              <div className="inline-grid h-20 w-20 place-items-center rounded-full bg-red-100 text-red-600 shadow-inner mx-auto">
-                <XCircle className="h-12 w-12" />
+          <div className="card overflow-hidden border-2 border-red-300 bg-red-50/90 text-red-950 shadow-lg p-4 md:p-8 space-y-3 md:space-y-6 flex flex-col flex-1 min-h-0">
+            <div className="text-center space-y-1.5 md:space-y-3 shrink-0">
+              <div className="inline-grid h-16 w-16 md:h-20 md:w-20 place-items-center rounded-full bg-red-100 text-red-600 shadow-inner mx-auto">
+                <XCircle className="h-9 w-9 md:h-12 md:w-12" />
               </div>
-              <h1 className="font-display text-2xl md:text-3xl font-bold text-red-950">
+              <h1 className="font-display text-xl md:text-3xl font-bold text-red-950">
                 Entry Denied
               </h1>
             </div>
 
-            <div className="bg-white/90 backdrop-blur rounded-xl p-5 space-y-3 text-sm text-red-950 border border-red-200 shadow-sm">
+            <div className="bg-white/90 backdrop-blur rounded-xl p-3.5 md:p-5 space-y-1.5 md:space-y-3 text-sm text-red-950 border border-red-200 shadow-sm flex-1 overflow-y-auto min-h-0">
               <div className="flex items-center justify-between py-1 border-b border-red-100">
                 <span className="text-red-800/80 text-xs font-semibold uppercase tracking-wider">
                   Ticket Reference
@@ -241,7 +241,7 @@ export default function ScanResultPage() {
 
             <button
               onClick={handleScanNext}
-              className="btn-primary w-full py-4 text-base font-bold flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+              className="btn-primary w-full py-3 md:py-4 text-base font-bold flex items-center justify-center gap-2 shadow-md hover:shadow-lg shrink-0"
             >
               Scan Next <ArrowRight className="h-5 w-5" />
             </button>

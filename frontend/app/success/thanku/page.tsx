@@ -141,7 +141,7 @@ export default function ThankYouPage() {
   };
 
   return (
-    <div className="mx-auto max-w-lg px-6 py-16">
+    <div className="mx-auto max-w-lg px-6 py-8 flex flex-col justify-center min-h-[calc(100vh-8.5rem)]">
       <div className="card p-8 text-center">
         {/* Icon */}
         <div className="mx-auto w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-6">

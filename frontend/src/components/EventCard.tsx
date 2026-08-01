@@ -1,6 +1,9 @@
+"use client";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { MapPin, Calendar } from "lucide-react";
 import { displayStatus } from "@/lib/api";
+import { getSession } from "@/lib/auth";
 
 
 export type EventSummary = {
@@ -34,9 +37,20 @@ export default function EventCard({
   /** Compact mode: smaller banner, reduced padding/type, no "seats left" text */
   compact?: boolean;
 }) {
+  const [isStaffOrAdmin, setIsStaffOrAdmin] = useState(false);
+
+  useEffect(() => {
+    const s = getSession();
+    setIsStaffOrAdmin(!!s && (s.role === "ADMIN" || s.role === "STAFF"));
+  }, []);
+
   const banner =
     event.bannerUrl ||
     `https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=1200&q=60`;
+
+  // Staff/admin can't book; show a neutral "View" instead of "Book Now"
+  const ctaLabel =
+    actionLabel === "Book Now" && isStaffOrAdmin ? "View" : actionLabel || "View";
 
   return (
     <div className="card overflow-hidden flex flex-col">
@@ -118,7 +132,7 @@ export default function EventCard({
             href={href}
             className={`${compact ? "btn-dark px-3 py-1.5 text-xs" : "btn-dark"} shrink-0`}
           >
-            {actionLabel || "View"}
+            {ctaLabel}
           </Link>
         </div>
       </div>

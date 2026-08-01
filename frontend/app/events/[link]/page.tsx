@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, displayStatus } from "@/lib/api";
+import { getSession } from "@/lib/auth";
 import { Calendar, Clock, MapPin, Phone, User, ArrowLeft } from "lucide-react";
 import { toast } from "@/lib/toast";
 
@@ -10,7 +11,13 @@ export default function EventDetails() {
   const { link } = useParams<{ link: string }>();
   const router = useRouter();
   const [ev, setEv] = useState<any>(null);
+  const [isStaffOrAdmin, setIsStaffOrAdmin] = useState(false);
   const previousSoldOut = useRef(false);
+
+  useEffect(() => {
+    const s = getSession();
+    setIsStaffOrAdmin(!!s && (s.role === "ADMIN" || s.role === "STAFF"));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -200,33 +207,37 @@ export default function EventDetails() {
               </div>
 
               {/* Desktop sticky Book Now */}
-              <div className="sticky top-24">
-                <button
-                  onClick={handleBook}
-                  disabled={bookingDisabled}
-                  className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {bookLabel}
-                </button>
-                <p className="mt-2 text-[11px] text-navy/50 text-center">
-                  Members only · OTP verification required
-                </p>
-              </div>
+              {!isStaffOrAdmin && (
+                <div className="sticky top-24">
+                  <button
+                    onClick={handleBook}
+                    disabled={bookingDisabled}
+                    className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {bookLabel}
+                  </button>
+                  <p className="mt-2 text-[11px] text-navy/50 text-center">
+                    Members only · OTP verification required
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
       {/* ── Mobile: floating Book Now above bottom nav ── */}
-      <div className="md:hidden fixed bottom-20 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-sm">
-        <button
-          onClick={handleBook}
-          disabled={bookingDisabled}
-          className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-        >
-          {bookLabel}
-        </button>
-      </div>
+      {!isStaffOrAdmin && (
+        <div className="md:hidden fixed bottom-20 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-sm">
+          <button
+            onClick={handleBook}
+            disabled={bookingDisabled}
+            className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+          >
+            {bookLabel}
+          </button>
+        </div>
+      )}
     </>
   );
 }

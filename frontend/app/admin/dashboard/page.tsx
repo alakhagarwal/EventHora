@@ -103,7 +103,7 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [authReady, setAuthReady] = useState(false);
-  const [statsOpen, setStatsOpen] = useState(true);
+  const [statsOpen, setStatsOpen] = useState(false);
 
   useEffect(() => {
     const session = getSession();

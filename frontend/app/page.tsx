@@ -3,19 +3,34 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
-import { isLoggedIn, clearSession, clearMemberSession } from "@/lib/auth";
+import { getSession, isLoggedIn, clearSession, clearMemberSession } from "@/lib/auth";
 import EventSlider from "@/components/EventSlider";
 import type { EventSummary } from "@/components/EventCard";
 
 export default function Landing() {
   const router = useRouter();
   const [events, setEvents] = useState<EventSummary[]>([]);
+  const [staffEvents, setStaffEvents] = useState<EventSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [isStaffOrAdmin, setIsStaffOrAdmin] = useState(false);
 
   useEffect(() => {
     setLoggedIn(isLoggedIn());
-    api.publicEvents().then((e) => setEvents(e || [])).catch(() => setEvents([])).finally(() => setLoading(false));
+    const session = getSession();
+    const staffOrAdmin = !!session && (session.role === "ADMIN" || session.role === "STAFF");
+    setIsStaffOrAdmin(staffOrAdmin);
+    if (staffOrAdmin) {
+      api.adminEvents()
+        .then((e) => setStaffEvents(e || []))
+        .catch(() => setStaffEvents([]))
+        .finally(() => setLoading(false));
+    } else {
+      api.publicEvents()
+        .then((e) => setEvents(e || []))
+        .catch(() => setEvents([]))
+        .finally(() => setLoading(false));
+    }
   }, []);
 
   const logout = () => {
@@ -31,6 +46,14 @@ export default function Landing() {
         .filter((e) => !e.eventDate || new Date(e.eventDate) >= new Date())
         .sort((a, b) => new Date(a.eventDate || "9999-12-31").getTime() - new Date(b.eventDate || "9999-12-31").getTime()),
     [events]
+  );
+
+  const pastEvents = useMemo(
+    () =>
+      staffEvents
+        .filter((e) => e.eventDate && new Date(e.eventDate) < new Date())
+        .sort((a, b) => new Date(b.eventDate || "1000-01-01").getTime() - new Date(a.eventDate || "1000-01-01").getTime()),
+    [staffEvents]
   );
 
   return (
@@ -82,19 +105,34 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Featured Events — horizontal slider on all screen sizes */}
-      <section className="py-8 md:py-16">
-        <EventSlider
-          title="Featured Events"
-          eyebrow="Handpicked for you"
-          events={upcomingEvents}
-          getHref={(e) => `/events/${e.uniqueEventLink}`}
-          actionLabel="Book Now"
-          viewAllHref="/events"
-          loading={loading}
-          emptyMessage="No published events yet."
-        />
-      </section>
+      {/* Featured Events for guests/members; Past Events for staff/admin */}
+      {isStaffOrAdmin ? (
+        <section className="py-8 md:py-16">
+          <EventSlider
+            title="Past Events"
+            eyebrow="Your event history"
+            events={pastEvents}
+            getHref={(e) => `/events/${e.uniqueEventLink}`}
+            actionLabel="View"
+            viewAllHref="/events"
+            loading={loading}
+            emptyMessage="No past events yet."
+          />
+        </section>
+      ) : (
+        <section className="py-8 md:py-16">
+          <EventSlider
+            title="Featured Events"
+            eyebrow="Handpicked for you"
+            events={upcomingEvents}
+            getHref={(e) => `/events/${e.uniqueEventLink}`}
+            actionLabel="Book Now"
+            viewAllHref="/events"
+            loading={loading}
+            emptyMessage="No published events yet."
+          />
+        </section>
+      )}
     </>
   );
 }
