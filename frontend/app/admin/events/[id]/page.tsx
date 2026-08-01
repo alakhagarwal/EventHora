@@ -28,11 +28,11 @@ export default function EditEvent() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-12">
-      <div className="flex items-end justify-between mb-8">
+    <div className="mx-auto max-w-5xl px-3 py-6 md:px-6 md:py-12">
+      <div className="flex items-end justify-between mb-6 md:mb-8">
         <div>
           <div className="eyebrow">Admin · {displayStatus(ev)}</div>
-          <h1 className="h1 mt-2">{ev.title}</h1>
+          <h1 className="h1 mt-1">{ev.title}</h1>
         </div>
         <Link href={`/admin/events/${id}/details`} className="btn-outline">View Details</Link>
       </div>

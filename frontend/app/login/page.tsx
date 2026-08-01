@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { saveSession } from "@/lib/auth";
+import { clearMemberSession, clearSession, saveSession } from "@/lib/auth";
 import { toast } from "@/lib/toast";
 
 type Tab = "staff" | "indian" | "overseas";
@@ -38,7 +38,7 @@ export default function LoginPage() {
       </div>
 
       <div className="card p-4 md:p-8">
-        {tab === "staff" && <StaffForm onDone={(role) => router.push(role === "ADMIN" ? "/admin/my-events" : "/")} />}
+        {tab === "staff" && <StaffForm onDone={(role) => router.push(role === "ADMIN" ? "/admin/dashboard" : "/")} />}
         {tab === "indian" && <MemberForm memberType="INDIAN" onDone={() => router.push("/events")} />}
         {tab === "overseas" && <MemberForm memberType="OVERSEAS" onDone={() => router.push("/events")} />}
       </div>
@@ -54,6 +54,7 @@ function StaffForm({ onDone }: { onDone: (role: "ADMIN" | "STAFF") => void }) {
     e.preventDefault(); setBusy(true);
     try {
       const res = await api.login(email, password);
+      clearMemberSession();
       saveSession(res.accessToken, { role: res.role, name: res.name, email: res.email });
       onDone(res.role);
     } catch (e: any) { toast.error(e.message || "Login failed"); } finally { setBusy(false); }
@@ -78,7 +79,10 @@ function MemberForm({ memberType, onDone }: { memberType: "INDIAN" | "OVERSEAS";
     e.preventDefault(); setBusy(true);
     try {
       const res: any = await api.verifyMember({ memberId, identifier, memberType });
-      if (res?.sessionToken) localStorage.setItem("memberSession", JSON.stringify(res));
+      if (res?.sessionToken) {
+        clearSession();
+        localStorage.setItem("memberSession", JSON.stringify(res));
+      }
       onDone();
     } catch (e: any) { toast.error(e.message || "Verification failed"); } finally { setBusy(false); }
   };

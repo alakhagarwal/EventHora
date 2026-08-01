@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Camera, QrCode, ArrowLeft, RefreshCw, DollarSign, Gift, AlertCircle, Loader2, CheckCircle2, XCircle, User, Ticket, Clock } from "lucide-react";
+import { Camera, QrCode, ArrowLeft, RefreshCw, DollarSign, AlertCircle, Loader2, CheckCircle2, XCircle, User, Ticket, Clock } from "lucide-react";
 import { api } from "@/lib/api";
 import { requireStaffAuth } from "@/lib/auth";
 import type { LookupResponse } from "@/types/staff";
@@ -37,6 +37,7 @@ export default function StaffScanPage() {
   const [processing, setProcessing] = useState(false);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupResult, setLookupResult] = useState<LookupResponse | null>(null);
+  const [scanLookupResult, setScanLookupResult] = useState<LookupResponse | null>(null);
   const [pendingPayment, setPendingPayment] = useState<PendingPaymentInfo | null>(null);
   const [scannerKey, setScannerKey] = useState(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -66,7 +67,7 @@ export default function StaffScanPage() {
       try {
         const { Html5QrcodeScanner } = await import("html5-qrcode");
         const element = document.getElementById("qr-reader");
-        if (element && !pendingPayment) {
+        if (element && !pendingPayment && !scanLookupResult) {
           html5QrcodeScanner = new Html5QrcodeScanner(
             "qr-reader",
             {
@@ -169,42 +170,16 @@ export default function StaffScanPage() {
     setProcessing(true);
 
     try {
-      // HTTP 200 OK — Successful check-in or duplicate scan
-      const res = await api.checkIn({ ticketReference: ticketRef });
-      sessionStorage.setItem("scanResult", JSON.stringify(res));
-      router.push("/staff/scan/result");
+      // Step 1: Lookup ticket (read-only) to show details for staff review
+      const res = await api.lookupTicket(ticketRef);
+      setScanLookupResult(res);
+      setProcessing(false);
     } catch (err: any) {
-      const status = err?.status;
-      const msg = err?.message || "Check-in request failed.";
-      const data = err?.data;
-
-      // Branch on HTTP status
-      if (status === 409) {
-        // Detect if 409 Conflict is due to Pay-at-Gate payment collection required
-        const isPaymentRequired =
-          msg.toLowerCase().includes("payment collection") ||
-          msg.toLowerCase().includes("pay-at-gate") ||
-          data?.paymentStatus === "PAY_AT_GATE";
-
-        if (isPaymentRequired) {
-          setPendingPayment({
-            ticketReference: ticketRef,
-            amount: data?.totalAmount ?? 0,
-            memberId: data?.memberId ?? "Member",
-            eventTitle: data?.eventTitle ?? selectedEvent?.title ?? "Event",
-            quantity: data?.quantity ?? 1,
-            message: msg,
-          });
-          setProcessing(false);
-          return;
-        }
-      }
-
-      // For 404 Not Found, 409 PENDING/FAILED, or any other error status
+      setProcessing(false);
       const errorResult = {
         isError: true,
-        status: status || 500,
-        message: msg,
+        status: err?.status || 500,
+        message: err?.message || "Ticket not found.",
         ticketReference: ticketRef,
         eventTitle: selectedEvent?.title || "Event",
       };
@@ -242,13 +217,27 @@ export default function StaffScanPage() {
     }
   };
 
+  const handleScanConfirmCheckIn = async () => {
+    if (!scanLookupResult) return;
+    setProcessing(true);
+    try {
+      const res = await api.checkIn({ ticketReference: scanLookupResult.ticketReference });
+      sessionStorage.setItem("scanResult", JSON.stringify(res));
+      router.push("/staff/scan/result");
+    } catch (err: any) {
+      toast.error(err.message || "Check-in failed.");
+      setProcessing(false);
+    }
+  };
+
   const clearLookup = () => {
     setLookupResult(null);
+    setScanLookupResult(null);
     setPendingPayment(null);
     setTicketInput("");
   };
 
-  const handleRecordPayment = async (action: "PAID" | "COMPLIMENTARY") => {
+  const handleRecordPayment = async (action: "PAID") => {
     const ticketRef = pendingPayment?.ticketReference || lookupResult?.ticketReference;
     if (!ticketRef) return;
     setProcessing(true);
@@ -268,6 +257,8 @@ export default function StaffScanPage() {
 
   const restartScanner = () => {
     setPendingPayment(null);
+    setScanLookupResult(null);
+    setLookupResult(null);
     setTicketInput("");
     setScannerKey((prev) => prev + 1);
   };
@@ -305,6 +296,96 @@ export default function StaffScanPage() {
           </div>
         )}
 
+        {/* QR Scan Result — Staff Review before confirming */}
+        {!processing && scanLookupResult && !pendingPayment && (
+          <div className="card p-6 border-2 border-navy bg-white space-y-5 shadow-md">
+            <div className="text-center">
+              <span className="chip-gold text-xs uppercase font-bold tracking-wider">Scanned Ticket</span>
+              <h2 className="font-display text-2xl font-bold text-navy mt-2">Review & Confirm</h2>
+              <p className="text-xs text-navy/70 mt-1">Verify the member details before admitting entry</p>
+            </div>
+
+            <div className="bg-cream rounded-lg p-4 space-y-3 text-sm text-navy">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-navy/70">Status</span>
+                <StatusChip status={scanLookupResult.paymentStatus} />
+              </div>
+              <div className="flex items-center justify-between py-1 border-t border-navy/10">
+                <span className="text-navy/70">Event</span>
+                <span className="font-semibold">{selectedEvent?.title || "—"}</span>
+              </div>
+              <div className="flex items-center justify-between py-1 border-t border-navy/10">
+                <span className="text-navy/70">Ticket</span>
+                <span className="font-mono font-bold">{scanLookupResult.ticketReference}</span>
+              </div>
+              <div className="flex items-center justify-between py-1 border-t border-navy/10">
+                <span className="text-navy/70 flex items-center gap-1.5"><User className="h-3.5 w-3.5" /> Member</span>
+                <span className="font-semibold">{scanLookupResult.memberId}</span>
+              </div>
+              <div className="flex items-center justify-between py-1 border-t border-navy/10">
+                <span className="text-navy/70 flex items-center gap-1.5"><User className="h-3.5 w-3.5" /> Member Type</span>
+                <span className="font-semibold">{scanLookupResult.memberType}</span>
+              </div>
+              <div className="flex items-center justify-between py-1 border-t border-navy/10">
+                <span className="text-navy/70 flex items-center gap-1.5"><Ticket className="h-3.5 w-3.5" /> Tickets (Qty)</span>
+                <span className="font-bold">{scanLookupResult.quantity}</span>
+              </div>
+              <div className="flex items-center justify-between py-1 border-t border-navy/10">
+                <span className="text-navy/70">Amount</span>
+                <span className="font-semibold">₹{scanLookupResult.totalAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+              </div>
+              {scanLookupResult.checkedInAt && (
+                <div className="flex items-center justify-between py-1 border-t border-navy/10">
+                  <span className="text-navy/70 flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> Checked In</span>
+                  <span className="font-medium">{new Date(scanLookupResult.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Action buttons for scan result */}
+            {["CONFIRMED", "FREE", "COMPLIMENTARY"].includes(scanLookupResult.paymentStatus) && !scanLookupResult.isCheckedIn && (
+              <button
+                onClick={handleScanConfirmCheckIn}
+                disabled={processing}
+                className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                Confirm Check-In
+              </button>
+            )}
+
+            {scanLookupResult.isCheckedIn && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 shrink-0 mt-0.5 text-amber-600" />
+                <p className="font-medium">Already checked in at {scanLookupResult.checkedInAt ? new Date(scanLookupResult.checkedInAt).toLocaleTimeString() : "earlier"}</p>
+              </div>
+            )}
+
+            {["PENDING", "FAILED"].includes(scanLookupResult.paymentStatus) && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800 flex items-start gap-2">
+                <XCircle className="h-5 w-5 shrink-0 mt-0.5 text-red-600" />
+                <div>
+                  <p className="font-semibold">Entry Denied</p>
+                  <p className="text-red-700">
+                    {scanLookupResult.paymentStatus === "PENDING"
+                      ? "This ticket has an incomplete online payment."
+                      : "This ticket's payment failed."}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="text-center pt-2">
+              <button
+                onClick={restartScanner}
+                className="text-xs text-navy/60 hover:text-navy underline"
+              >
+                Scan Next Ticket
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Payment Collection Sub-Flow (PAY_AT_GATE) */}
         {!processing && pendingPayment && (
           <div className="card p-6 border-2 border-gold bg-white space-y-6 shadow-md">
@@ -339,18 +420,12 @@ export default function StaffScanPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+            <div className="pt-2">
               <button
                 onClick={() => handleRecordPayment("PAID")}
-                className="btn-primary flex items-center justify-center gap-2 py-3"
+                className="btn-primary flex items-center justify-center gap-2 py-3 w-full"
               >
                 <DollarSign className="h-4 w-4" /> Confirm Cash Payment
-              </button>
-              <button
-                onClick={() => handleRecordPayment("COMPLIMENTARY")}
-                className="btn-outline flex items-center justify-center gap-2 py-3 border-navy text-navy hover:bg-navy/5"
-              >
-                <Gift className="h-4 w-4 text-gold" /> Mark Complimentary
               </button>
             </div>
 
@@ -366,7 +441,7 @@ export default function StaffScanPage() {
         )}
 
         {/* Main Camera + Manual Input View */}
-        {!processing && !pendingPayment && (
+        {!processing && !pendingPayment && !scanLookupResult && (
           <div className="space-y-6">
             {/* Camera View Card */}
             <div className="card p-4 overflow-hidden bg-white text-center">
@@ -468,22 +543,13 @@ export default function StaffScanPage() {
                     </button>
                   )}
                   {lookupResult.paymentStatus === "PAY_AT_GATE" && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <button
-                        onClick={() => handleRecordPayment("PAID")}
-                        disabled={processing}
-                        className="btn-primary flex items-center justify-center gap-2 py-3 disabled:opacity-50"
-                      >
-                        <DollarSign className="h-4 w-4" /> Confirm Cash Payment
-                      </button>
-                      <button
-                        onClick={() => handleRecordPayment("COMPLIMENTARY")}
-                        disabled={processing}
-                        className="btn-outline flex items-center justify-center gap-2 py-3 border-navy text-navy hover:bg-navy/5 disabled:opacity-50"
-                      >
-                        <Gift className="h-4 w-4 text-gold" /> Mark Complimentary
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => handleRecordPayment("PAID")}
+                      disabled={processing}
+                      className="btn-primary w-full flex items-center justify-center gap-2 py-3 disabled:opacity-50"
+                    >
+                      <DollarSign className="h-4 w-4" /> Confirm Cash Payment
+                    </button>
                   )}
                   {["PENDING", "FAILED"].includes(lookupResult.paymentStatus) && (
                     <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800 flex items-start gap-2">

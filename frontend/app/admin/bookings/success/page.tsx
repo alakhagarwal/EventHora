@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import QRCode from "qrcode";
-import jsPDF from "jspdf";
 import { getSession } from "@/lib/auth";
+import { generateTicketPdf } from "@/lib/ticketPdf";
+import { Smartphone } from "lucide-react";
 
 function formatEventDate(d?: string) {
   if (!d) return "";
@@ -48,15 +49,21 @@ export default function AdminBookingSuccess() {
     eventVenue: params.get("eventVenue") || "",
     bookedBy: params.get("bookedBy") || "",
     bookedAt: params.get("bookedAt") || "",
+    mobileNumber: params.get("mobileNumber") || "",
   };
 
   const isFree = booking.paymentStatus === "FREE" || booking.paymentStatus === "COMPLIMENTARY";
+
+  const whatsappMessage = useMemo(() => {
+    const msg = `🎟️ *${booking.eventTitle}* Ticket%0A%0A📅 ${formatEventDate(booking.eventDate)} · ${formatTime(booking.eventStartTime)}%0A📍 ${booking.eventVenue}%0A%0A🎫 *Ref:* ${booking.ticketReference}%0A👤 Member: ${booking.memberId}%0A🎟️ Qty: ${booking.quantity}%0A💰 Amount: ${formatAmount(booking.totalAmount)}%0A%0APresent this ticket reference at the entry gate.`;
+    return msg;
+  }, [booking]);
 
   const ticketRef = booking.ticketReference;
 
   const qrPayload = useMemo(() => {
     if (!ticketRef) return null;
-    return `EVTHORA:${ticketRef}`;
+    return ticketRef;
   }, [ticketRef]);
 
   const [qrImageDataUrl, setQrImageDataUrl] = useState<string | null>(null);
@@ -86,106 +93,17 @@ export default function AdminBookingSuccess() {
 
   const handleDownloadPdf = async () => {
     if (!ticketRef || !qrImageDataUrl) return;
-
-    const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-    const pw = 595.28, ph = 841.89, mx = 36;
-
-    const navyR = 15, navyG = 27, navyB = 61;
-    const goldR = 201, goldG = 168, goldB = 76;
-    const creamR = 250, creamG = 247, creamB = 240;
-
-    doc.setFillColor(creamR, creamG, creamB);
-    doc.rect(0, 0, pw, ph, "F");
-
-    const headerH = 90;
-    doc.setFillColor(navyR, navyG, navyB);
-    doc.rect(0, 0, pw, headerH, "F");
-    doc.setFillColor(goldR, goldG, goldB);
-    doc.rect(0, headerH, pw, 4, "F");
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(26);
-    doc.setTextColor(255, 255, 255);
-    doc.text("EVENTHORA", pw / 2, 40, { align: "center" });
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(200, 200, 220);
-    doc.text("Event Ticket", pw / 2, 60, { align: "center" });
-
-    const cardX = mx, cardW = pw - mx * 2, cardY = headerH + 24, cardH = 640;
-    doc.setFillColor(255, 255, 255);
-    doc.setDrawColor(220, 220, 225);
-    doc.setLineWidth(0.5);
-    doc.roundedRect(cardX, cardY, cardW, cardH, 8, 8, "FD");
-
-    let y = cardY + 28;
-    const leftCol = cardX + 24, rightCol = cardX + cardW / 2 + 12;
-    const labelColor: [number, number, number] = [140, 145, 160];
-    const valueColor: [number, number, number] = [navyR, navyG, navyB];
-
-    const drawField = (lx: number, ly: number, label: string, value: string) => {
-      doc.setFontSize(8); doc.setFont("helvetica", "normal");
-      doc.setTextColor(...labelColor); doc.text(label.toUpperCase(), lx, ly);
-      doc.setFontSize(11); doc.setFont("helvetica", "bold");
-      doc.setTextColor(...valueColor); doc.text(value || "—", lx, ly + 14);
-    };
-
-    drawField(leftCol, y, "Event", booking.eventTitle);
-    drawField(rightCol, y, "Date", formatEventDate(booking.eventDate));
-    y += 42;
-    drawField(leftCol, y, "Time", formatTime(booking.eventStartTime));
-    drawField(rightCol, y, "Venue", booking.eventVenue);
-    y += 42;
-
-    y += 8;
-    doc.setDrawColor(230, 230, 235);
-    doc.setLineWidth(0.5);
-    doc.line(cardX + 20, y, cardX + cardW - 20, y);
-    y += 20;
-
-    const qrSize = 240, qrX = (pw - qrSize) / 2;
-    doc.setFillColor(255, 255, 255);
-    doc.setDrawColor(navyR, navyG, navyB);
-    doc.setLineWidth(2);
-    doc.roundedRect(qrX - 6, y - 6, qrSize + 12, qrSize + 12, 6, 6, "FD");
-    doc.addImage(qrImageDataUrl, "PNG", qrX, y, qrSize, qrSize);
-
-    y += qrSize + 24;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.setTextColor(navyR, navyG, navyB);
-    doc.text(ticketRef, pw / 2, y, { align: "center" });
-    y += 28;
-
-    doc.setDrawColor(230, 230, 235);
-    doc.setLineWidth(0.5);
-    doc.line(cardX + 20, y, cardX + cardW - 20, y);
-    y += 24;
-
-    const amountText = isFree ? "Free" : `Rs. ${Number(booking.totalAmount).toLocaleString("en-IN")}`;
-
-    const drawDetail = (lx: number, ly: number, label: string, value: string) => {
-      doc.setFontSize(8); doc.setFont("helvetica", "normal");
-      doc.setTextColor(...labelColor); doc.text(label.toUpperCase(), lx, ly);
-      doc.setFontSize(11); doc.setFont("helvetica", "bold");
-      doc.setTextColor(...valueColor); doc.text(value || "—", lx, ly + 14);
-    };
-
-    drawDetail(leftCol, y, "Ticket Ref", ticketRef);
-    drawDetail(rightCol, y, "Quantity", booking.quantity);
-    y += 42;
-    drawDetail(leftCol, y, "Amount", amountText);
-    drawDetail(rightCol, y, "Payment Status", booking.paymentStatus);
-
-    const footerH = 52;
-    doc.setFillColor(navyR, navyG, navyB);
-    doc.rect(0, ph - footerH, pw, footerH, "F");
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(255, 255, 255);
-    doc.text("Present this QR code at the entry gate for check-in.", pw / 2, ph - footerH / 2 + 4, { align: "center" });
-
-    doc.save(`EventHora-Ticket-${ticketRef}.pdf`);
+    await generateTicketPdf({
+      ticketReference: ticketRef,
+      eventTitle: booking.eventTitle,
+      eventDate: booking.eventDate,
+      startTime: booking.eventStartTime,
+      venue: booking.eventVenue,
+      quantity: Number(booking.quantity),
+      totalAmount: Number(booking.totalAmount),
+      paymentStatus: booking.paymentStatus,
+      qrImageDataUrl,
+    });
   };
 
   const handlePrint = () => {
@@ -245,7 +163,23 @@ export default function AdminBookingSuccess() {
           <div><span className="label">Status</span><p className="text-navy">{booking.paymentStatus.replace("_", " ")}</p></div>
           <div><span className="label">Booked By</span><p className="text-navy">{booking.bookedBy}</p></div>
           <div><span className="label">Booked At</span><p className="text-navy">{booking.bookedAt ? new Date(booking.bookedAt).toLocaleString() : "-"}</p></div>
+          {booking.mobileNumber && (
+            <div><span className="label">Mobile (Ticket Delivery)</span><p className="text-navy">{booking.mobileNumber}</p></div>
+          )}
         </div>
+
+        {booking.mobileNumber && (
+          <div className="border-t border-navy/10 pt-4">
+            <a
+              href={`https://wa.me/${booking.mobileNumber.replace(/^\+/, "").replace(/[^0-9]/g, "")}?text=${whatsappMessage}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-outline w-full flex items-center justify-center gap-2 py-3 border-green-600 text-green-700 hover:bg-green-50"
+            >
+              <Smartphone className="h-4 w-4" /> Send Ticket via WhatsApp
+            </a>
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-3 border-t border-navy/10 pt-4">
           <button onClick={handleDownloadPdf} className="btn-dark">

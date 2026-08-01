@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Minus, Plus } from "lucide-react";
+import { Minus, Plus, Search, ChevronDown, CheckCircle2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { toast } from "@/lib/toast";
@@ -34,21 +34,11 @@ function formatDateTime(value?: string, timeValue?: string) {
   const formattedTime = timeValue
     ? new Date(`1970-01-01T${timeValue}`).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
     : date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  return `${datePart} · ${formattedTime}`;
+  return `${datePart} \u00b7 ${formattedTime}`;
 }
 
 function formatAmount(amount: number) {
-  return `₹${Number(amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function resetFormState(eventId: string) {
-  return {
-    eventId,
-    memberId: "",
-    memberType: "INDIAN" as const,
-    quantity: 1,
-    action: "PAY_AT_GATE" as const,
-  };
+  return `\u20b9${Number(amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export default function AdminDirectBookingPage() {
@@ -58,13 +48,23 @@ export default function AdminDirectBookingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
-  const [form, setForm] = useState<{ eventId: string; memberId: string; memberType: "INDIAN" | "OVERSEAS"; quantity: number; action: "PAY_AT_GATE" | "COMPLIMENTARY"; }>({
+  const [mobileNumber, setMobileNumber] = useState("");
+  const [form, setForm] = useState<{
+    eventId: string;
+    memberId: string;
+    memberType: "INDIAN" | "OVERSEAS";
+    quantity: number;
+  }>({
     eventId: "",
     memberId: "",
     memberType: "INDIAN",
     quantity: 1,
-    action: "PAY_AT_GATE",
   });
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [highlightIdx, setHighlightIdx] = useState(-1);
 
   useEffect(() => {
     const session = getSession();
@@ -73,7 +73,6 @@ export default function AdminDirectBookingPage() {
       setAuthReady(true);
       return;
     }
-
     setAuthReady(true);
     setLoading(true);
     api.adminEvents()
@@ -108,6 +107,16 @@ export default function AdminDirectBookingPage() {
       .finally(() => setLoading(false));
   }, [router]);
 
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
   const selectedEvent = useMemo(
     () => events.find((event) => event.id === form.eventId) || null,
     [events, form.eventId]
@@ -116,8 +125,45 @@ export default function AdminDirectBookingPage() {
   useEffect(() => {
     if (!selectedEvent) return;
     const max = selectedEvent.maxTicketsPerMember || 1;
-    setForm((current) => ({ ...current, quantity: Math.min(current.quantity || 1, max), action: current.action || "PAY_AT_GATE" }));
+    setForm((current) => ({
+      ...current,
+      quantity: Math.min(current.quantity || 1, max),
+    }));
   }, [selectedEvent]);
+
+  const filteredEvents = useMemo(() => {
+    if (!searchQuery.trim()) return events;
+    const q = searchQuery.toLowerCase();
+    return events.filter((e) => e.title.toLowerCase().includes(q));
+  }, [events, searchQuery]);
+
+  useEffect(() => {
+    setHighlightIdx(-1);
+  }, [searchQuery]);
+
+  const selectEvent = (eventId: string) => {
+    setForm((current) => ({ ...current, eventId }));
+    const ev = events.find((e) => e.id === eventId);
+    setSearchQuery(ev?.title || "");
+    setShowDropdown(false);
+    setHighlightIdx(-1);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!showDropdown || filteredEvents.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightIdx((prev) => (prev < filteredEvents.length - 1 ? prev + 1 : 0));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightIdx((prev) => (prev > 0 ? prev - 1 : filteredEvents.length - 1));
+    } else if (e.key === "Enter" && highlightIdx >= 0) {
+      e.preventDefault();
+      selectEvent(filteredEvents[highlightIdx].id);
+    } else if (e.key === "Escape") {
+      setShowDropdown(false);
+    }
+  };
 
   const ticketPrice = Number(selectedEvent?.ticketPrice || 0);
   const maxTickets = Number(selectedEvent?.maxTicketsPerMember || 1);
@@ -158,7 +204,8 @@ export default function AdminDirectBookingPage() {
         memberType: form.memberType,
         eventId: selectedEvent.id,
         quantity: form.quantity,
-        action: isFreeEvent ? "PAY_AT_GATE" : form.action,
+        action: "COMPLIMENTARY",
+        mobileNumber: mobileNumber || undefined,
       });
       toast.success(`Member registered: ${response.ticketReference}`);
       const params = new URLSearchParams({
@@ -173,6 +220,7 @@ export default function AdminDirectBookingPage() {
         eventVenue: response.eventVenue || selectedEvent.venue || "",
         bookedBy: response.bookedBy || "",
         bookedAt: response.bookedAt || "",
+        mobileNumber: mobileNumber || "",
       });
       router.push(`/admin/bookings/success?${params.toString()}`);
     } catch (err: any) {
@@ -211,20 +259,49 @@ export default function AdminDirectBookingPage() {
         <div className="card p-8 text-navy/60">No published events are available for walk-in registration.</div>
       ) : (
         <form onSubmit={submit} className="card space-y-6 p-5 md:p-6">
+          {/* Event + Member ID */}
           <div className="grid gap-4 md:grid-cols-2">
-            <div>
+            <div className="relative" ref={dropdownRef}>
               <label className="label">Event</label>
-              <select
-                className="input"
-                value={form.eventId}
-                onChange={(e) => setForm((current) => ({ ...current, eventId: e.target.value }))}
-              >
-                {events.map((event) => (
-                  <option key={event.id} value={event.id}>
-                    {event.title} · {formatDateTime(event.eventDate, event.startTime)} · {event.availableCount}/{event.totalCapacity}
-                  </option>
-                ))}
-              </select>
+              <div className="relative mt-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-navy/40" />
+                <input
+                  type="text"
+                  className="input pl-9 pr-8"
+                  placeholder="Search events..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setShowDropdown(true);
+                    if (!e.target.value) setForm((current) => ({ ...current, eventId: "" }));
+                  }}
+                  onFocus={() => {
+                    setShowDropdown(true);
+                    if (!searchQuery && selectedEvent) {
+                      setSearchQuery(selectedEvent.title);
+                    }
+                  }}
+                  onKeyDown={handleKeyDown}
+                />
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-navy/40" />
+              </div>
+              {showDropdown && filteredEvents.length > 0 && (
+                <ul className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border border-navy/15 bg-white shadow-lg">
+                  {filteredEvents.map((event, idx) => (
+                    <li
+                      key={event.id}
+                      className={`px-3 py-2.5 text-sm cursor-pointer transition-colors ${idx === highlightIdx ? "bg-navy/10 text-navy font-medium" : "text-navy/80 hover:bg-navy/5"} ${event.id === form.eventId ? "font-semibold" : ""}`}
+                      onClick={() => selectEvent(event.id)}
+                      onMouseEnter={() => setHighlightIdx(idx)}
+                    >
+                      {event.title}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {showDropdown && filteredEvents.length === 0 && searchQuery.trim() && (
+                <div className="absolute z-20 mt-1 w-full rounded-lg border border-navy/15 bg-white p-3 text-sm text-navy/50 text-center">No events found</div>
+              )}
               {selectedEvent && (
                 <p className={`mt-1 text-xs ${selectedEvent.isSoldOut ? "text-red-700" : "text-navy/60"}`}>
                   {selectedEvent.availableCount}/{selectedEvent.totalCapacity} seats remaining
@@ -242,6 +319,19 @@ export default function AdminDirectBookingPage() {
             </div>
           </div>
 
+          {/* Mobile Number */}
+          <div>
+            <label className="label">Mobile Number <span className="text-navy/40">(for ticket delivery, optional)</span></label>
+            <input
+              type="tel"
+              className="input"
+              placeholder="e.g. 9876543210"
+              value={mobileNumber}
+              onChange={(e) => setMobileNumber(e.target.value)}
+            />
+          </div>
+
+          {/* Member Type + Quantity */}
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label className="label">Member Type</label>
@@ -276,43 +366,34 @@ export default function AdminDirectBookingPage() {
             </div>
           </div>
 
+          {/* Action */}
           {!isFreeEvent && (
-            <div>
-              <label className="label">Action</label>
-              <div className="flex gap-3">
-                {(["PAY_AT_GATE", "COMPLIMENTARY"] as const).map((action) => (
-                  <button
-                    key={action}
-                    type="button"
-                    onClick={() => setForm((current) => ({ ...current, action }))}
-                    className={`btn ${form.action === action ? "btn-dark" : "btn-outline"}`}
-                  >
-                    {action === "PAY_AT_GATE" ? "Pay at Gate" : "Complimentary"}
-                  </button>
-                ))}
-              </div>
+            <div className="flex items-center gap-2 text-sm text-navy/70">
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+              <span>
+                This booking will be marked <strong>Payment Verified</strong> — payment already collected.
+              </span>
             </div>
           )}
 
+          {/* Order Summary */}
           <div className="card bg-navy/5 p-4">
             <div className="label">Order Summary</div>
             <div className="text-lg font-semibold text-navy">
-              {isFreeEvent
-                ? "Free"
-                : `${paidTickets} × ${formatAmount(ticketPrice)} = ${formatAmount(orderTotal)}`}
+              {isFreeEvent ? "Free" : `${paidTickets} x ${formatAmount(ticketPrice)} = ${formatAmount(orderTotal)}`}
             </div>
-            {freeTickets > 0 && form.quantity > 0 && (
-              <div className="text-xs text-green-700 font-medium">
-                Includes {Math.min(form.quantity, freeTickets)} free ticket(s) per registration
-              </div>
-            )}
             <div className="mt-1 text-sm text-navy/70">
-              {selectedEvent ? `${selectedEvent.title} · ${formatDateTime(selectedEvent.eventDate, selectedEvent.startTime)}` : "Select an event to continue"}
+              {form.quantity} ticket{form.quantity > 1 ? "s" : ""}
+              {paidTickets !== form.quantity ? ` (${paidTickets} paid, ${freeTickets} free)` : ""}
+            </div>
+            <div className="mt-1 text-sm text-navy/70">
+              {selectedEvent ? `${selectedEvent.title} \u00b7 ${formatDateTime(selectedEvent.eventDate, selectedEvent.startTime)}` : "Select an event to continue"}
             </div>
           </div>
 
+          {/* Submit */}
           <button type="submit" className="btn-primary w-full md:w-auto" disabled={submitting || !selectedEvent}>
-            {submitting ? "Registering…" : "Register Member"}
+            {submitting ? "Registering..." : "Register Member"}
           </button>
         </form>
       )}

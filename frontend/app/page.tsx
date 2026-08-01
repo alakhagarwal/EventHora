@@ -1,10 +1,11 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { isLoggedIn, clearSession, clearMemberSession } from "@/lib/auth";
-import EventCard, { type EventSummary } from "@/components/EventCard";
+import EventSlider from "@/components/EventSlider";
+import type { EventSummary } from "@/components/EventCard";
 
 export default function Landing() {
   const router = useRouter();
@@ -24,6 +25,14 @@ export default function Landing() {
     router.push("/");
   };
 
+  const upcomingEvents = useMemo(
+    () =>
+      events
+        .filter((e) => !e.eventDate || new Date(e.eventDate) >= new Date())
+        .sort((a, b) => new Date(a.eventDate || "9999-12-31").getTime() - new Date(b.eventDate || "9999-12-31").getTime()),
+    [events]
+  );
+
   return (
     <>
       {/* Hero */}
@@ -31,8 +40,7 @@ export default function Landing() {
         <div
           className="absolute inset-0 opacity-30"
           style={{
-            backgroundImage:
-              "url(/hero.webp)",
+            backgroundImage: "url(/hero.webp)",
             backgroundSize: "cover",
             backgroundPosition: "center",
           }}
@@ -74,26 +82,18 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Featured */}
-      <section className="mx-auto max-w-7xl px-4 md:px-6 py-12 md:py-20">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-8 md:mb-10 gap-4">
-          <div>
-            <div className="eyebrow">Handpicked for you</div>
-            <h2 className="h2 mt-2">Featured Events</h2>
-          </div>
-          <Link href="/events" className="btn-outline self-start sm:self-auto">View All →</Link>
-        </div>
-        {loading ? (
-          <div className="text-navy/60">Loading…</div>
-        ) : events.length === 0 ? (
-          <div className="card p-10 text-center text-navy/60">No published events yet.</div>
-        ) : (
-          <div className="grid gap-4 md:gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {events.filter((e) => !e.eventDate || new Date(e.eventDate) >= new Date()).slice(0, 3).map((e) => (
-              <EventCard key={e.id} event={e} href={`/events/${e.uniqueEventLink}`} actionLabel="Book Now" />
-            ))}
-          </div>
-        )}
+      {/* Featured Events — horizontal slider on all screen sizes */}
+      <section className="py-8 md:py-16">
+        <EventSlider
+          title="Featured Events"
+          eyebrow="Handpicked for you"
+          events={upcomingEvents}
+          getHref={(e) => `/events/${e.uniqueEventLink}`}
+          actionLabel="Book Now"
+          viewAllHref="/events"
+          loading={loading}
+          emptyMessage="No published events yet."
+        />
       </section>
     </>
   );

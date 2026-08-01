@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Calendar, MapPin } from "lucide-react";
+import { Calendar, MapPin, ChevronDown, ChevronRight } from "lucide-react";
 import { api, displayStatus } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { toast } from "@/lib/toast";
@@ -103,6 +103,7 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [authReady, setAuthReady] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(true);
 
   useEffect(() => {
     const session = getSession();
@@ -141,7 +142,7 @@ export default function AdminDashboardPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 md:px-6 md:py-12">
+    <div className="mx-auto max-w-7xl px-3 py-8 md:px-6 md:py-12">
       <div className="mb-6 flex flex-col gap-4 md:mb-8 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="eyebrow">Admin</div>
@@ -151,75 +152,95 @@ export default function AdminDashboardPage() {
         <SearchInput className="w-full md:max-w-md" value={query} onChange={setQuery} placeholder="Search events by title" />
       </div>
 
-      <div className="space-y-6 mb-8">
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-navy/50">Events overview</h2>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
-            {loading || !stats ? (
-              Array.from({ length: 6 }).map((_, index) => <StatSkeleton key={index} />)
-            ) : (
-              <>
-                <StatCard label="Total Events" value={stats.totalEvents} accent="bg-gold" />
-                <StatCard label="Published" value={stats.publishedEvents} accent="bg-green-500" />
-                <StatCard label="Upcoming" value={stats.upcomingEvents} accent="bg-blue-500" />
-                <StatCard label="Draft" value={stats.draftEvents} accent="bg-amber-500" />
-                <StatCard label="Completed" value={stats.completedEvents} accent="bg-slate-500" />
-                <StatCard label="Cancelled" value={stats.cancelledEvents} accent="bg-red-500" />
-              </>
-            )}
-          </div>
-        </section>
+      <div className="card overflow-hidden mb-8">
+        <button
+          type="button"
+          onClick={() => setStatsOpen((o) => !o)}
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 md:px-5 text-left"
+          aria-expanded={statsOpen}
+        >
+          <span className="text-sm font-semibold uppercase tracking-[0.2em] text-navy/70">
+            Events overview
+          </span>
+          {statsOpen ? (
+            <ChevronDown size={18} className="shrink-0 text-navy/50" />
+          ) : (
+            <ChevronRight size={18} className="shrink-0 text-navy/50" />
+          )}
+        </button>
 
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-navy/50">Registrations</h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {loading || !stats ? (
-              Array.from({ length: 3 }).map((_, index) => <StatSkeleton key={index} />)
-            ) : (
-              <>
-                <StatCard label="Total Registrations" value={stats.totalRegistrations} accent="bg-gold" />
-                <StatCard label="Locked Registrations" value={stats.lockedRegistrations} accent="bg-orange-500" />
-                <StatCard label="Tickets Sold" value={stats.totalTicketsSold} accent="bg-green-500" />
-              </>
-            )}
-          </div>
-        </section>
+        {statsOpen && (
+          <div className="space-y-6 border-t border-navy/10 p-4 md:p-5">
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-navy/50">Events overview</h2>
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+                {loading || !stats ? (
+                  Array.from({ length: 6 }).map((_, index) => <StatSkeleton key={index} />)
+                ) : (
+                  <>
+                    <StatCard label="Total Events" value={stats.totalEvents} accent="bg-gold" />
+                    <StatCard label="Published" value={stats.publishedEvents} accent="bg-green-500" />
+                    <StatCard label="Upcoming" value={stats.upcomingEvents} accent="bg-blue-500" />
+                    <StatCard label="Draft" value={stats.draftEvents} accent="bg-amber-500" />
+                    <StatCard label="Completed" value={stats.completedEvents} accent="bg-slate-500" />
+                    <StatCard label="Cancelled" value={stats.cancelledEvents} accent="bg-red-500" />
+                  </>
+                )}
+              </div>
+            </section>
 
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-navy/50">This month</h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {loading || !stats ? (
-              Array.from({ length: 2 }).map((_, index) => <StatSkeleton key={index} />)
-            ) : (
-              <>
-                <StatCard label="Registrations This Month" value={stats.registrationsThisMonth} accent="bg-blue-500" />
-                <StatCard label="Tickets Sold This Month" value={stats.ticketsSoldThisMonth} accent="bg-green-500" />
-              </>
-            )}
-          </div>
-        </section>
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-navy/50">Registrations</h2>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                {loading || !stats ? (
+                  Array.from({ length: 3 }).map((_, index) => <StatSkeleton key={index} />)
+                ) : (
+                  <>
+                    <StatCard label="Total Registrations" value={stats.totalRegistrations} accent="bg-gold" />
+                    <StatCard label="Locked Registrations" value={stats.lockedRegistrations} accent="bg-orange-500" />
+                    <StatCard label="Tickets Sold" value={stats.totalTicketsSold} accent="bg-green-500" />
+                  </>
+                )}
+              </div>
+            </section>
 
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-navy/50">Revenue</h2>
-          <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-            {loading || !stats ? (
-              Array.from({ length: 4 }).map((_, index) => <StatSkeleton key={index} />)
-            ) : (
-              <>
-                <StatCard label="Total Revenue" value={formatAmount(stats.totalRevenue)} accent="bg-green-500" />
-                <StatCard label="Pending Gate Collection" value={formatAmount(stats.pendingGateCollection)} accent="bg-orange-500" />
-                <StatCard label="Complimentary Waived" value={formatAmount(stats.complimentaryWaived)} accent="bg-purple-500" />
-                <StatCard label="Revenue This Month" value={formatAmount(stats.revenueThisMonth)} accent="bg-gold" />
-              </>
-            )}
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-navy/50">This month</h2>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {loading || !stats ? (
+                  Array.from({ length: 2 }).map((_, index) => <StatSkeleton key={index} />)
+                ) : (
+                  <>
+                    <StatCard label="Registrations This Month" value={stats.registrationsThisMonth} accent="bg-blue-500" />
+                    <StatCard label="Tickets Sold This Month" value={stats.ticketsSoldThisMonth} accent="bg-green-500" />
+                  </>
+                )}
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-navy/50">Revenue</h2>
+              <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+                {loading || !stats ? (
+                  Array.from({ length: 4 }).map((_, index) => <StatSkeleton key={index} />)
+                ) : (
+                  <>
+                    <StatCard label="Total Revenue" value={formatAmount(stats.totalRevenue)} accent="bg-green-500" />
+                    <StatCard label="Pending Gate Collection" value={formatAmount(stats.pendingGateCollection)} accent="bg-orange-500" />
+                    <StatCard label="Complimentary Waived" value={formatAmount(stats.complimentaryWaived)} accent="bg-purple-500" />
+                    <StatCard label="Revenue This Month" value={formatAmount(stats.revenueThisMonth)} accent="bg-gold" />
+                  </>
+                )}
+              </div>
+            </section>
           </div>
-        </section>
+        )}
       </div>
 
       {loading ? (
-        <div className="card divide-y divide-navy/10 overflow-hidden">
+        <div className="grid gap-4 md:gap-5">
           {[1, 2, 3, 4].map((item) => (
-            <div key={item} className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between animate-pulse">
+            <div key={item} className="card flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between animate-pulse">
               <div className="space-y-3">
                 <div className="h-5 w-72 rounded bg-navy/10" />
                 <div className="h-4 w-52 rounded bg-navy/10" />
@@ -239,11 +260,11 @@ export default function AdminDashboardPage() {
           <p className="mt-1 text-sm">There are no events matching your search.</p>
         </div>
       ) : (
-        <div className="card divide-y divide-navy/10 overflow-hidden">
+        <div className="grid gap-4 md:gap-5">
           {filteredEvents.map((event) => (
             <div
               key={event.id}
-              className="flex flex-col gap-4 p-5 transition-colors hover:bg-navy/5 md:flex-row md:items-center md:justify-between"
+              className="card flex flex-col gap-4 p-5 transition-colors hover:bg-navy/5 md:flex-row md:items-center md:justify-between"
             >
               <div className="min-w-0 flex-1 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">

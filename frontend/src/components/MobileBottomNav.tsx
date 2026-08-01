@@ -42,19 +42,6 @@ function BookingsIcon({ active }: { active: boolean }) {
   );
 }
 
-function UsersIcon({ active }: { active: boolean }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round"
-      className="h-5 w-5">
-      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  );
-}
-
 function UserIcon({ active }: { active: boolean }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -78,50 +65,38 @@ function LoginIcon({ active }: { active: boolean }) {
   );
 }
 
-function ScanIcon({ active }: { active: boolean }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round"
-      className="h-5 w-5">
-      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-      <circle cx="12" cy="13" r="4" />
-    </svg>
-  );
-}
-
 /* ── Nav item type ── */
 type NavItem = {
   label: string;
   href: string;
   icon: (props: { active: boolean }) => React.ReactNode;
-  matchPaths: string[]; // paths that mark this item as active
+  matchPaths: string[];
 };
 
 /* ── Build nav items based on role ── */
 function getNavItems(session: Session, hasMemberSession: boolean): NavItem[] {
-  const eventItem: NavItem = session?.role === "ADMIN"
-    ? { label: "My Events", href: "/admin/my-events", icon: CalendarIcon, matchPaths: ["/admin/my-events"] }
-    : { label: "Events", href: "/events", icon: CalendarIcon, matchPaths: ["/events"] };
-
   const items: NavItem[] = [
     { label: "Home", href: "/", icon: HomeIcon, matchPaths: ["/"] },
-    eventItem,
   ];
 
+  // Admins land on My Events; everyone else gets the public Events listing
+  if (session?.role === "ADMIN") {
+    items.push({ label: "My Events", href: "/admin/my-events", icon: CalendarIcon, matchPaths: ["/admin/my-events"] });
+  } else {
+    items.push({ label: "Events", href: "/events", icon: CalendarIcon, matchPaths: ["/events"] });
+  }
+
+  // Members get a Bookings shortcut
   if (!session && hasMemberSession) {
     items.push({ label: "Bookings", href: "/member/bookings", icon: BookingsIcon, matchPaths: ["/member/bookings"] });
   }
 
-  if (session?.role === "ADMIN" || session?.role === "STAFF") {
-    items.push({ label: "Scanner", href: "/staff", icon: ScanIcon, matchPaths: ["/staff"] });
-  }
-
-  if (session?.role === "ADMIN") {
-    items.push({ label: "Users", href: "/admin/users", icon: UsersIcon, matchPaths: ["/admin/users"] });
+  // Profile for admin/staff (shared) or members (own page); Sign In for anonymous guests
+  if (session) {
     items.push({ label: "Profile", href: "/profile", icon: UserIcon, matchPaths: ["/profile"] });
-  } else if (session?.role === "STAFF") {
-    items.push({ label: "Profile", href: "/profile", icon: UserIcon, matchPaths: ["/profile"] });
-  } else if (!hasMemberSession) {
+  } else if (hasMemberSession) {
+    items.push({ label: "Profile", href: "/member/profile", icon: UserIcon, matchPaths: ["/member/profile"] });
+  } else {
     items.push({ label: "Sign In", href: "/login", icon: LoginIcon, matchPaths: ["/login"] });
   }
 

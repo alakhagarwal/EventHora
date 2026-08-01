@@ -149,104 +149,108 @@ export default function EventForm({
 
   return (
     <div className="space-y-8">
-      <Section title="Basic details">
-        <Grid>
-          <Field label="Title"><input className="input" value={values.title} onChange={(e) => set("title", e.target.value)} /></Field>
-          <Field label="Category">
-            <select className="input" value={values.category} onChange={(e) => set("category", e.target.value)}>
-              {EVENT_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-            </select>
-          </Field>
-        </Grid>
-        <Field label="Description"><textarea rows={5} className="input" value={values.description} onChange={(e) => set("description", e.target.value)} /></Field>
-      </Section>
+      <div className="card-mobile overflow-hidden">
+        <div className="divide-y divide-navy/10 md:divide-y-0 md:space-y-8">
+          <Section title="Basic details">
+            <Grid>
+              <Field label="Title"><input className="input" value={values.title} onChange={(e) => set("title", e.target.value)} /></Field>
+              <Field label="Category">
+                <select className="input" value={values.category} onChange={(e) => set("category", e.target.value)}>
+                  {EVENT_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </Field>
+            </Grid>
+            <Field label="Description"><textarea rows={5} className="input" value={values.description} onChange={(e) => set("description", e.target.value)} /></Field>
+          </Section>
 
-      <Section title="Banner">
-        <div
-          className="relative flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-navy/20 bg-navy/5 p-6 transition-colors hover:border-gold/50 hover:bg-gold/5"
-          onClick={() => fileRef.current?.click()}
-        >
-          {bannerUrl ? (
-            <>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={bannerUrl} alt="Banner preview" className="max-h-48 w-full rounded-lg object-cover" />
-              <button
-                type="button"
-                className="btn-outline mt-3 text-xs"
-                onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }}
-              >
-                Change banner
-              </button>
-            </>
-          ) : (
-            <>
-              <Upload className="mb-2 h-8 w-8 text-navy/30" />
-              <p className="text-sm font-medium text-navy/60">Click to upload a banner image</p>
-              <p className="mt-1 text-xs text-navy/40">
-                {pendingBanner ? `${pendingBanner.name} (pending — will upload on save)` : "Recommended: 1200×600px"}
-              </p>
-            </>
-          )}
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
-          />
+          <Section title="Banner">
+            <div
+              className="relative flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-navy/20 bg-navy/5 p-6 transition-colors hover:border-gold/50 hover:bg-gold/5"
+              onClick={() => fileRef.current?.click()}
+            >
+              {bannerUrl ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={bannerUrl} alt="Banner preview" className="max-h-48 w-full rounded-lg object-cover" />
+                  <button
+                    type="button"
+                    className="btn-outline mt-3 text-xs"
+                    onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }}
+                  >
+                    Change banner
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Upload className="mb-2 h-8 w-8 text-navy/30" />
+                  <p className="text-sm font-medium text-navy/60">Click to upload a banner image</p>
+                  <p className="mt-1 text-xs text-navy/40">
+                    {pendingBanner ? `${pendingBanner.name} (pending — will upload on save)` : "Recommended: 1200×600px"}
+                  </p>
+                </>
+              )}
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
+              />
+            </div>
+          </Section>
+
+          <Section title="Schedule">
+            <Grid cols={4}>
+              <Field label="Event Date"><input type="date" className="input" value={values.eventDate} onChange={(e) => set("eventDate", e.target.value)} /></Field>
+              <Field label="Start Time"><input type="time" step={1} className="input" value={values.startTime.slice(0,8)} onChange={(e) => set("startTime", (e.target.value.length === 5 ? e.target.value + ":00" : e.target.value))} /></Field>
+              <Field label="End Time"><input type="time" step={1} className="input" value={values.endTime.slice(0,8)} onChange={(e) => set("endTime", (e.target.value.length === 5 ? e.target.value + ":00" : e.target.value))} /></Field>
+              <Field label="Registration Deadline"><input type="datetime-local" className="input" value={values.registrationDeadline?.slice(0,16)} onChange={(e) => set("registrationDeadline", e.target.value.length === 16 ? e.target.value + ":00" : e.target.value)} /></Field>
+            </Grid>
+          </Section>
+
+          <Section title="Venue">
+            <Grid>
+              <Field label="Venue"><input className="input" value={values.venue} onChange={(e) => set("venue", e.target.value)} /></Field>
+              <Field label="Additional Venue Info"><input className="input" value={values.additionalVenueInfo} onChange={(e) => set("additionalVenueInfo", e.target.value)} /></Field>
+            </Grid>
+          </Section>
+
+          <Section title="Capacity & pricing">
+            <Grid cols={4}>
+              <Field label="Total Capacity"><input type="number" className="input" value={values.totalCapacity} onChange={(e) => set("totalCapacity", Number(e.target.value))} /></Field>
+              <Field label="Max Tickets / Member"><input type="number" className="input" value={values.maxTicketsPerMember} onChange={(e) => set("maxTicketsPerMember", Number(e.target.value))} /></Field>
+              <Field label="Free Tickets"><input type="number" className="input" value={values.freeTicketsPerRegistration} onChange={(e) => set("freeTicketsPerRegistration", Number(e.target.value))} /></Field>
+              <Field label="Minimum Age"><input type="number" className="input" value={values.minimumAge ?? ""} onChange={(e) => set("minimumAge", e.target.value === "" ? null : Number(e.target.value))} /></Field>
+              <Field label="Ticket Price"><input type="number" step="0.01" className="input" value={values.ticketPrice} onChange={(e) => set("ticketPrice", Number(e.target.value))} /></Field>
+              <Field label="Platform Fee / Ticket"><input type="number" step="0.01" className="input" value={values.platformFeePerTicket} onChange={(e) => set("platformFeePerTicket", Number(e.target.value))} /></Field>
+            </Grid>
+          </Section>
+
+          <Section title="Important notes">
+            <div className="flex gap-2">
+              <input className="input" placeholder="Add a note…" value={noteInput} onChange={(e) => setNoteInput(e.target.value)} />
+              <button type="button" className="btn-outline" onClick={() => { if (noteInput.trim()) { set("importantNotes", [...values.importantNotes, noteInput.trim()]); setNoteInput(""); } }}>Add</button>
+            </div>
+            <ul className="mt-3 space-y-1">
+              {values.importantNotes.map((n, i) => (
+                <li key={i} className="flex items-center justify-between rounded bg-navy/5 px-3 py-1 text-sm">
+                  <span>• {n}</span>
+                  <button className="text-xs text-red-600" onClick={() => set("importantNotes", values.importantNotes.filter((_, j) => j !== i))}>Remove</button>
+                </li>
+              ))}
+            </ul>
+          </Section>
+
+          <Section title="Contact">
+            <Grid>
+              <Field label="Contact Person"><input className="input" value={values.contactPersonName} onChange={(e) => set("contactPersonName", e.target.value)} /></Field>
+              <Field label="Contact Phone"><input className="input" value={values.contactPersonPhone} onChange={(e) => set("contactPersonPhone", e.target.value)} /></Field>
+            </Grid>
+          </Section>
         </div>
-      </Section>
+      </div>
 
-      <Section title="Schedule">
-        <Grid cols={4}>
-          <Field label="Event Date"><input type="date" className="input" value={values.eventDate} onChange={(e) => set("eventDate", e.target.value)} /></Field>
-          <Field label="Start Time"><input type="time" step={1} className="input" value={values.startTime.slice(0,8)} onChange={(e) => set("startTime", (e.target.value.length === 5 ? e.target.value + ":00" : e.target.value))} /></Field>
-          <Field label="End Time"><input type="time" step={1} className="input" value={values.endTime.slice(0,8)} onChange={(e) => set("endTime", (e.target.value.length === 5 ? e.target.value + ":00" : e.target.value))} /></Field>
-          <Field label="Registration Deadline"><input type="datetime-local" className="input" value={values.registrationDeadline?.slice(0,16)} onChange={(e) => set("registrationDeadline", e.target.value.length === 16 ? e.target.value + ":00" : e.target.value)} /></Field>
-        </Grid>
-      </Section>
-
-      <Section title="Venue">
-        <Grid>
-          <Field label="Venue"><input className="input" value={values.venue} onChange={(e) => set("venue", e.target.value)} /></Field>
-          <Field label="Additional Venue Info"><input className="input" value={values.additionalVenueInfo} onChange={(e) => set("additionalVenueInfo", e.target.value)} /></Field>
-        </Grid>
-      </Section>
-
-      <Section title="Capacity & pricing">
-        <Grid cols={4}>
-          <Field label="Total Capacity"><input type="number" className="input" value={values.totalCapacity} onChange={(e) => set("totalCapacity", Number(e.target.value))} /></Field>
-          <Field label="Max Tickets / Member"><input type="number" className="input" value={values.maxTicketsPerMember} onChange={(e) => set("maxTicketsPerMember", Number(e.target.value))} /></Field>
-          <Field label="Free Tickets"><input type="number" className="input" value={values.freeTicketsPerRegistration} onChange={(e) => set("freeTicketsPerRegistration", Number(e.target.value))} /></Field>
-          <Field label="Minimum Age"><input type="number" className="input" value={values.minimumAge ?? ""} onChange={(e) => set("minimumAge", e.target.value === "" ? null : Number(e.target.value))} /></Field>
-          <Field label="Ticket Price"><input type="number" step="0.01" className="input" value={values.ticketPrice} onChange={(e) => set("ticketPrice", Number(e.target.value))} /></Field>
-          <Field label="Platform Fee / Ticket"><input type="number" step="0.01" className="input" value={values.platformFeePerTicket} onChange={(e) => set("platformFeePerTicket", Number(e.target.value))} /></Field>
-        </Grid>
-      </Section>
-
-      <Section title="Important notes">
-        <div className="flex gap-2">
-          <input className="input" placeholder="Add a note…" value={noteInput} onChange={(e) => setNoteInput(e.target.value)} />
-          <button type="button" className="btn-outline" onClick={() => { if (noteInput.trim()) { set("importantNotes", [...values.importantNotes, noteInput.trim()]); setNoteInput(""); } }}>Add</button>
-        </div>
-        <ul className="mt-3 space-y-1">
-          {values.importantNotes.map((n, i) => (
-            <li key={i} className="flex items-center justify-between rounded bg-navy/5 px-3 py-1 text-sm">
-              <span>• {n}</span>
-              <button className="text-xs text-red-600" onClick={() => set("importantNotes", values.importantNotes.filter((_, j) => j !== i))}>Remove</button>
-            </li>
-          ))}
-        </ul>
-      </Section>
-
-      <Section title="Contact">
-        <Grid>
-          <Field label="Contact Person"><input className="input" value={values.contactPersonName} onChange={(e) => set("contactPersonName", e.target.value)} /></Field>
-          <Field label="Contact Phone"><input className="input" value={values.contactPersonPhone} onChange={(e) => set("contactPersonPhone", e.target.value)} /></Field>
-        </Grid>
-      </Section>
-
-      <div className="flex flex-wrap gap-2 sticky bottom-0 bg-cream/90 backdrop-blur border-t border-navy/10 p-3 -mx-4">
+      <div className="flex flex-wrap gap-2 sticky bottom-0 bg-cream/90 backdrop-blur border-t border-navy/10 p-3 -mx-3">
         {!currentId ? (
           // New event — not yet saved
           <button className="btn-dark" disabled={busy !== null} onClick={createDraft}>
@@ -289,15 +293,15 @@ export default function EventForm({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="card p-6">
-      <h3 className="font-display text-lg text-navy mb-4">{title}</h3>
+    <div className="card-md p-5">
+      <h3 className="font-display text-lg text-navy mb-3">{title}</h3>
       {children}
     </div>
   );
 }
 function Grid({ cols = 2, children }: { cols?: number; children: React.ReactNode }) {
   const map: Record<number, string> = { 2: "md:grid-cols-2", 3: "md:grid-cols-3", 4: "md:grid-cols-4" };
-  return <div className={`grid gap-4 ${map[cols] || "md:grid-cols-2"}`}>{children}</div>;
+  return <div className={`grid gap-3 ${map[cols] || "md:grid-cols-2"}`}>{children}</div>;
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div><label className="label">{label}</label>{children}</div>;

@@ -10,6 +10,7 @@ export function saveSession(token: string, s: NonNullable<Session>) {
 export function getSession(): Session {
   if (typeof window === "undefined") return null;
   try {
+    if (!localStorage.getItem("accessToken")) return null;
     const raw = localStorage.getItem("session");
     return raw ? JSON.parse(raw) : null;
   } catch {

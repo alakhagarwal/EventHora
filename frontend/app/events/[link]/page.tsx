@@ -46,7 +46,6 @@ export default function EventDetails() {
   const status = displayStatus(ev);
   const seatsRemaining = Number(ev.availableCount ?? 0);
   const totalCapacity = Number(ev.totalCapacity ?? 0);
-  const bookedCount = Math.max(0, totalCapacity - seatsRemaining);
   const bookingDisabled = !ev.registrationOpen || status === "COMPLETED" || ev.isSoldOut || seatsRemaining <= 0;
   const bookLabel =
     status === "COMPLETED"
@@ -60,9 +59,6 @@ export default function EventDetails() {
   const handleBook = () => {
     if (!bookingDisabled) router.push(`/events/${link}/book`);
   };
-
-  const seatTone = seatsRemaining <= 0 ? "text-red-700" : seatsRemaining <= 5 ? "text-amber-700" : "text-green-700";
-  const seatBarPercent = totalCapacity ? (bookedCount / totalCapacity) * 100 : 0;
 
   return (
     <>
@@ -98,10 +94,6 @@ export default function EventDetails() {
 
           {/* ── Mobile: compact info box immediately below banner ── */}
           <div className="md:hidden border-b border-navy/10 bg-cream/60 px-4 py-4 flex flex-col gap-2.5 text-sm text-navy/80">
-            <div className={`font-semibold ${seatTone}`}>{seatsRemaining} seats remaining</div>
-            <div className="h-2 overflow-hidden rounded-full bg-navy/10">
-              <div className="h-full rounded-full bg-gold" style={{ width: `${seatBarPercent}%` }} />
-            </div>
             <div className="flex items-center gap-2">
               <MapPin size={15} className="text-gold-600 shrink-0" />
               <span>{ev.venue || "TBA"}</span>
@@ -135,10 +127,6 @@ export default function EventDetails() {
             <div className="md:col-span-2">
               <div className="eyebrow">{ev.category}</div>
               <h1 className="h1 mt-2">{ev.title}</h1>
-              <div className={`mt-3 text-sm font-semibold ${seatTone}`}>{seatsRemaining} seats remaining</div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-navy/10">
-                <div className="h-full rounded-full bg-gold" style={{ width: `${seatBarPercent}%` }} />
-              </div>
 
               {ev.description && (
                 <p className="mt-4 md:mt-6 whitespace-pre-line text-navy/80 leading-relaxed text-sm md:text-base">
@@ -160,56 +148,56 @@ export default function EventDetails() {
               )}
             </div>
 
-            {/* Right: detail boxes (desktop only) */}
+            {/* Right: combined detail card + sticky Book Now (desktop only) */}
             <div className="hidden md:flex flex-col gap-4">
-              {/* Venue */}
-              <div className="card p-4 flex items-start gap-3">
-                <MapPin size={18} className="text-gold-600 shrink-0 mt-0.5" />
-                <div>
-                  <div className="text-[11px] uppercase tracking-widest text-navy/50 mb-0.5">Venue</div>
-                  <div className="text-navy font-medium text-sm">{ev.venue || "TBA"}</div>
-                </div>
-              </div>
-
-              {/* Time */}
-              <div className="card p-4 flex items-start gap-3">
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center gap-2">
-                    <Calendar size={18} className="text-gold-600 shrink-0" />
-                    <div>
-                      <div className="text-[11px] uppercase tracking-widest text-navy/50 mb-0.5">Date</div>
-                      <div className="text-navy font-medium text-sm">{ev.eventDate}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Clock size={18} className="text-gold-600 shrink-0" />
-                    <div>
-                      <div className="text-[11px] uppercase tracking-widest text-navy/50 mb-0.5">Time</div>
-                      <div className="text-navy font-medium text-sm">
-                        {ev.startTime?.slice(0, 5)}
-                        {ev.endTime ? ` – ${ev.endTime.slice(0, 5)}` : ""}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Contact */}
-              {ev.contactPersonName && (
-                <div className="card p-4 flex items-start gap-3">
-                  <User size={18} className="text-gold-600 shrink-0 mt-0.5" />
+              {/* Combined Venue / Time / Contact card */}
+              <div className="card p-4 space-y-4">
+                <div className="flex items-start gap-3">
+                  <MapPin size={18} className="text-gold-600 shrink-0 mt-0.5" />
                   <div>
-                    <div className="text-[11px] uppercase tracking-widest text-navy/50 mb-0.5">Contact</div>
-                    <div className="text-navy font-medium text-sm">{ev.contactPersonName}</div>
-                    {ev.contactPersonPhone && (
-                      <div className="flex items-center gap-1.5 mt-1 text-navy/70 text-sm">
-                        <Phone size={13} />
-                        {ev.contactPersonPhone}
-                      </div>
-                    )}
+                    <div className="text-[11px] uppercase tracking-widest text-navy/50 mb-0.5">Venue</div>
+                    <div className="text-navy font-medium text-sm">{ev.venue || "TBA"}</div>
                   </div>
                 </div>
-              )}
+
+                <div className="flex items-start gap-3">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <Calendar size={18} className="text-gold-600 shrink-0" />
+                      <div>
+                        <div className="text-[11px] uppercase tracking-widest text-navy/50 mb-0.5">Date</div>
+                        <div className="text-navy font-medium text-sm">{ev.eventDate}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Clock size={18} className="text-gold-600 shrink-0" />
+                      <div>
+                        <div className="text-[11px] uppercase tracking-widest text-navy/50 mb-0.5">Time</div>
+                        <div className="text-navy font-medium text-sm">
+                          {ev.startTime?.slice(0, 5)}
+                          {ev.endTime ? ` – ${ev.endTime.slice(0, 5)}` : ""}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {ev.contactPersonName && (
+                  <div className="flex items-start gap-3">
+                    <User size={18} className="text-gold-600 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="text-[11px] uppercase tracking-widest text-navy/50 mb-0.5">Contact</div>
+                      <div className="text-navy font-medium text-sm">{ev.contactPersonName}</div>
+                      {ev.contactPersonPhone && (
+                        <div className="flex items-center gap-1.5 mt-1 text-navy/70 text-sm">
+                          <Phone size={13} />
+                          {ev.contactPersonPhone}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Desktop sticky Book Now */}
               <div className="sticky top-24">

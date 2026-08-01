@@ -1,23 +1,17 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
-import { getMemberSession, getSession } from "@/lib/auth";
-import { toast } from "@/lib/toast";
+import Link from "next/link";
+import { getMemberSession } from "@/lib/auth";
 
-export default function ProfilePage() {
-  const [me, setMe] = useState<any>(null);
+export default function MemberProfilePage() {
+  const [member, setMember] = useState<any>(null);
   const router = useRouter();
 
   useEffect(() => {
     const memberSession = getMemberSession();
     if (memberSession?.sessionToken) {
-      router.replace("/member/profile");
-      return;
-    }
-    const staffSession = getSession();
-    if (staffSession) {
-      api.me().then(setMe).catch((e) => toast.error(e.message));
+      setMember(memberSession);
     } else {
       router.push("/login");
     }
@@ -25,18 +19,17 @@ export default function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 md:px-6 py-8 md:py-16">
-      <div className="eyebrow">Account</div>
+      <div className="eyebrow">Member</div>
       <h1 className="h1 mt-2">Your Profile</h1>
-      {me && (
+      {member && (
         <div className="card p-5 md:p-8 mt-6 md:mt-8 space-y-3 md:space-y-4">
-          <Row k="Name" v={me.name} />
-          <Row k="Email" v={me.email} />
-          <Row k="Role" v={me.role} />
-          {me.createdAt && <Row k="Joined" v={new Date(me.createdAt).toLocaleString()} />}
+          <Row k="Member ID" v={member.memberId || "—"} />
+          <Row k="Member Type" v={member.memberType ? member.memberType.replace("_", " ") : "—"} />
+          <Row k="Identifier" v={member.maskedIdentifier || "—"} />
+          <div className="pt-2">
+            <Link href="/member/bookings" className="btn-primary inline-flex">View My Bookings</Link>
+          </div>
         </div>
-      )}
-      {!me && (
-        <p className="mt-6 text-navy/60">Loading profile…</p>
       )}
     </div>
   );

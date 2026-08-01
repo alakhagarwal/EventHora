@@ -149,6 +149,9 @@ export default function Navbar() {
               <Link href="/member/bookings" className={linkCls("/member/bookings")}>My Bookings</Link>
             )}
             {session && <Link href="/profile" className={linkCls("/profile")}>Profile</Link>}
+            {!session && memberSession && (
+              <Link href="/member/profile" className={linkCls("/member/profile")}>Profile</Link>
+            )}
           </nav>
 
           {/* Right: auth buttons */}
@@ -227,10 +230,14 @@ export default function Navbar() {
               )}
 
 
-              {session && (
+              {is_logged_in && (
                 <>
                   <div className="drawer-divider" />
-                  <Link href="/profile" className={drawerLinkCls("/profile")} onClick={() => setDrawerOpen(false)}>
+                  <Link
+                    href={session ? "/profile" : "/member/profile"}
+                    className={drawerLinkCls(session ? "/profile" : "/member/profile")}
+                    onClick={() => setDrawerOpen(false)}
+                  >
                     {icons.profile} Profile
                   </Link>
                 </>

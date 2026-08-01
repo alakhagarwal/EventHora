@@ -35,6 +35,7 @@ export async function apiFetch<T = any>(path: string, opts: Options = {}): Promi
   if (res.status === 401 || res.status === 403) {
     if (typeof window !== "undefined" && opts.auth !== false) {
       localStorage.removeItem("accessToken");
+      localStorage.removeItem("session");
       if (!window.location.pathname.startsWith("/login")) window.location.href = "/login";
     }
   }
@@ -135,7 +136,8 @@ export const api = {
     memberType: "INDIAN" | "OVERSEAS";
     eventId: string;
     quantity: number;
-    action: "PAY_AT_GATE" | "COMPLIMENTARY";
+    action: "PAY_AT_GATE" | "COMPLIMENTARY" | "CONFIRMED";
+    mobileNumber?: string;
   }) => apiFetch("/api/admin/bookings/register", { method: "POST", json: body }),
 
   recordGatePayment: (body: { ticketReference: string; action: "PAID" | "COMPLIMENTARY" }) =>
