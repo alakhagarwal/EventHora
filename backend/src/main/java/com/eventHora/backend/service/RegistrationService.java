@@ -27,6 +27,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.razorpay.RazorpayException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.stereotype.Service;
@@ -63,6 +64,13 @@ public class RegistrationService {
 
     // ─── OTP Expiry in seconds (returned to frontend for countdown timer) ─────
     private static final int OTP_TTL_SECONDS = 300;
+
+    // ─── Demo Mode ────────────────────────────────────────────────────────────
+    // When true, OTP "123456" is always accepted so portfolio visitors can test
+    // the full booking flow without access to the backend server logs.
+    // Controlled by the DEMO_MODE environment variable (default: false).
+    @Value("${demo.mode:false}")
+    private boolean demoMode;
 
     // ─── Endpoint 1: Verify Member ────────────────────────────────────────────
 
@@ -220,10 +228,21 @@ public class RegistrationService {
         Object storedOtp = redisTemplate.opsForValue().get(otpKey);
 
         if (storedOtp == null) {
-            throw new BadCredentialsException("OTP has expired. Please restart the booking process.");
-        }
-        if (!storedOtp.toString().equals(request.getOtp())) {
-            throw new BadCredentialsException("Incorrect OTP. Please try again.");
+            // In demo mode, allow the universal demo OTP even if Redis entry expired
+            if (demoMode && "123456".equals(request.getOtp())) {
+                log.info("[DEMO-MODE] Universal demo OTP accepted for session {}", request.getSessionToken());
+            } else {
+                throw new BadCredentialsException("OTP has expired. Please restart the booking process.");
+            }
+        } else {
+            // Demo mode: accept "123456" OR the real stored OTP
+            boolean isDemoOtp = demoMode && "123456".equals(request.getOtp());
+            if (!isDemoOtp && !storedOtp.toString().equals(request.getOtp())) {
+                throw new BadCredentialsException("Incorrect OTP. Please try again.");
+            }
+            if (isDemoOtp) {
+                log.info("[DEMO-MODE] Universal demo OTP accepted for session {}", request.getSessionToken());
+            }
         }
 
         // ── Step 2: Retrieve the locked BookingIntent from Redis ───────────────

@@ -62,9 +62,14 @@ export default function OtpPage() {
         sessionStorage.setItem("bookingResult", JSON.stringify(enriched));
         router.push("/success/thanku");
       } else if (result.paymentStatus === "PENDING") {
+        const rzpKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+        if (!rzpKey) {
+          toast.error("Payment configuration error: NEXT_PUBLIC_RAZORPAY_KEY_ID is not set.");
+          return;
+        }
         // Open Razorpay checkout
         const razorpay = new (window as any).Razorpay({
-          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+          key: rzpKey,
           amount: Math.round(Number(result.totalAmount) * 100),
           currency: "INR",
           name: "EventHora",

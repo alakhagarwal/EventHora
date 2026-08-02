@@ -22,7 +22,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
  */
 @Slf4j
 @Configuration
-@Profile("dev")   // only seeds on local dev, not in production
+@Profile({"dev", "prod"})   // only seeds on local dev, not in production
 @RequiredArgsConstructor
 public class DataInitializer {
 
