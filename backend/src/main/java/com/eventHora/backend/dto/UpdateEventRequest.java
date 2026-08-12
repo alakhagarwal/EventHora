@@ -13,8 +13,8 @@ import java.util.List;
 
 /**
  * Request DTO for ADMIN partially updating an existing event.
- * All fields are optional — only the non-null fields will be applied.
- * This maps to PATCH /api/events/{id}
+ * All fields are optional — only non-null fields will be applied (PATCH semantics).
+ * Maps to: PATCH /api/events/{id}
  */
 @Data
 public class UpdateEventRequest {
@@ -29,31 +29,51 @@ public class UpdateEventRequest {
     private LocalTime startTime;
     private LocalTime endTime;
 
-    // No @Future here — for partial updates the existing date is preserved as-is
-    // when the admin doesn't change the field. Validation is enforced at creation time
-    // via CreateEventRequest which still has @Future on registrationDeadline.
+    // No @Future here — preserves existing deadline when admin doesn't change it.
+    // @Future is enforced at creation time in CreateEventRequest.
     private LocalDateTime registrationDeadline;
 
     private String venue;
     private String additionalVenueInfo;
 
+    // ─── Capacity ─────────────────────────────────────────────────────────────
+
     @Min(value = 1, message = "Total capacity must be at least 1")
     private Integer totalCapacity;
 
-    @Min(value = 1, message = "Max tickets per member must be at least 1")
-    private Integer maxTicketsPerMember;
+    // ─── Member Ticket Tier ───────────────────────────────────────────────────
 
-    @Min(value = 0, message = "Free tickets cannot be negative")
-    private Integer freeTicketsPerRegistration;
+    @Min(value = 1, message = "Max member tickets must be at least 1")
+    private Integer maxMemberTickets;
 
-    @DecimalMin(value = "0.0", message = "Ticket price cannot be negative")
-    private BigDecimal ticketPrice;               // Unified price per paid ticket
+    @Min(value = 0, message = "Free member tickets cannot be negative")
+    private Integer freeMemberTickets;
+
+    @DecimalMin(value = "0.0", message = "Member ticket price cannot be negative")
+    private BigDecimal memberTicketPrice;
+
+    // ─── Guest Ticket Tier ────────────────────────────────────────────────────
+
+    @Min(value = 0, message = "Max guest tickets cannot be negative")
+    private Integer maxGuestTickets;
+
+    @Min(value = 0, message = "Free guest tickets cannot be negative")
+    private Integer freeGuestTickets;
+
+    @DecimalMin(value = "0.0", message = "Guest ticket price cannot be negative")
+    private BigDecimal guestTicketPrice;
+
+    // ─── Platform Fee ─────────────────────────────────────────────────────────
 
     @DecimalMin(value = "0.0", message = "Platform fee cannot be negative")
     private BigDecimal platformFeePerTicket;
 
+    // ─── Event Rules ──────────────────────────────────────────────────────────
+
     @Min(value = 0, message = "Minimum age cannot be negative")
     private Integer minimumAge;
+
+    // ─── Notes & Contact ──────────────────────────────────────────────────────
 
     private List<String> importantNotes;         // Replaces all existing notes when provided
     private String contactPersonName;

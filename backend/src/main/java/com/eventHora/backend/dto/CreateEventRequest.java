@@ -13,7 +13,13 @@ import java.util.List;
 
 /**
  * Request DTO for ADMIN creating a new event.
- * All required fields must be present. Optional fields default to sensible values.
+ *
+ * Dual-tier pricing:
+ *  - Member tier: maxMemberTickets / freeMemberTickets / memberTicketPrice
+ *  - Guest tier:  maxGuestTickets  / freeGuestTickets  / guestTicketPrice
+ *
+ * Set maxGuestTickets = 0 to disallow guests entirely.
+ * Set memberTicketPrice = 0.00 for a fully-free event (members admitted at no cost).
  */
 @Data
 public class CreateEventRequest {
@@ -54,29 +60,45 @@ public class CreateEventRequest {
 
     private String additionalVenueInfo;          // e.g. "Convention Hall with Lawn" for gala dinner
 
-    // ─── Capacity & Tickets ───────────────────────────────────────────────────
+    // ─── Capacity ─────────────────────────────────────────────────────────────
 
     @NotNull(message = "Total capacity is required")
     @Min(value = 1, message = "Total capacity must be at least 1")
-    private Integer totalCapacity;
+    private Integer totalCapacity;               // Hard ceiling — member + guest seats combined
 
-    @NotNull(message = "Max tickets per member is required")
-    @Min(value = 1, message = "Max tickets per member must be at least 1")
-    private Integer maxTicketsPerMember;          // Total tickets a member can book (themselves + anyone with them)
+    // ─── Member Ticket Tier ───────────────────────────────────────────────────
 
-    @NotNull(message = "Free tickets per registration is required")
-    @Min(value = 0, message = "Free tickets cannot be negative")
-    private Integer freeTicketsPerRegistration;   // How many of maxTicketsPerMember are free
+    @NotNull(message = "Max member tickets is required")
+    @Min(value = 1, message = "Max member tickets must be at least 1")
+    private Integer maxMemberTickets;            // Max member-tier seats per booking
 
-    @NotNull(message = "Ticket price is required")
-    @DecimalMin(value = "0.0", message = "Ticket price cannot be negative")
-    private BigDecimal ticketPrice;               // Unified price per paid ticket (0.00 for fully free events)
+    @NotNull(message = "Free member tickets is required")
+    @Min(value = 0, message = "Free member tickets cannot be negative")
+    private Integer freeMemberTickets;           // How many member tickets are free per booking
+
+    @NotNull(message = "Member ticket price is required")
+    @DecimalMin(value = "0.0", message = "Member ticket price cannot be negative")
+    private BigDecimal memberTicketPrice;        // Price per paid member ticket (0.00 = fully free)
+
+    // ─── Guest Ticket Tier ────────────────────────────────────────────────────
+
+    @NotNull(message = "Max guest tickets is required")
+    @Min(value = 0, message = "Max guest tickets cannot be negative")
+    private Integer maxGuestTickets;             // Max guest seats per booking (0 = guests not allowed)
+
+    @NotNull(message = "Free guest tickets is required")
+    @Min(value = 0, message = "Free guest tickets cannot be negative")
+    private Integer freeGuestTickets;            // How many guest tickets are free per booking
+
+    @NotNull(message = "Guest ticket price is required")
+    @DecimalMin(value = "0.0", message = "Guest ticket price cannot be negative")
+    private BigDecimal guestTicketPrice;         // Price per paid guest ticket (0.00 = guests free)
 
     // ─── Platform Fee ─────────────────────────────────────────────────────────
 
     @NotNull(message = "Platform fee is required")
     @DecimalMin(value = "0.0", message = "Platform fee cannot be negative")
-    private BigDecimal platformFeePerTicket;
+    private BigDecimal platformFeePerTicket;     // Applied to all paid tickets (member + guest)
 
     // ─── Event Rules ──────────────────────────────────────────────────────────
 

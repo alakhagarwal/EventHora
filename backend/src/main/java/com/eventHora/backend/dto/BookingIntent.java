@@ -13,7 +13,7 @@ import java.util.UUID;
  * Stored in Redis under key "intent:{sessionToken}" with a 10-minute TTL.
  *
  * Locks the booking intent between /initiate and /verify-otp.
- * Using Redis prevents the frontend from changing quantity or eventId
+ * Using Redis prevents the frontend from changing quantities or eventId
  * between the two calls — the backend always uses what was locked here.
  */
 @Data
@@ -23,6 +23,7 @@ import java.util.UUID;
 public class BookingIntent implements Serializable {
 
     private UUID eventId;
-    private int quantity;
+    private int memberQuantity;            // RIC-member tier seats locked
+    private int guestQuantity;             // Guest tier seats locked
     private PaymentPreference paymentPreference;
 }

@@ -1,12 +1,15 @@
 package com.eventHora.backend.service;
 
 import com.eventHora.backend.Enum.EventStatus;
+import com.eventHora.backend.Enum.MediaType;
 import com.eventHora.backend.Enum.PaymentStatus;
 import com.eventHora.backend.dto.*;
 import com.eventHora.backend.exception.ResourceNotFoundException;
 import com.eventHora.backend.model.Event;
+import com.eventHora.backend.model.EventMedia;
 import com.eventHora.backend.model.Registration;
 import com.eventHora.backend.model.SystemUser;
+import com.eventHora.backend.repository.EventMediaRepository;
 import com.eventHora.backend.repository.EventRepository;
 import com.eventHora.backend.repository.RegistrationRepository;
 import com.eventHora.backend.repository.SystemUserRepository;
@@ -32,6 +35,7 @@ public class EventService {
     private final SystemUserRepository userRepository;
     private final S3Service s3Service;
     private final RegistrationRepository registrationRepository;
+    private final EventMediaRepository eventMediaRepository;
 
     // ─── Create ───────────────────────────────────────────────────────────────
 
@@ -53,9 +57,14 @@ public class EventService {
                 .venue(request.getVenue())
                 .additionalVenueInfo(request.getAdditionalVenueInfo())
                 .totalCapacity(request.getTotalCapacity())
-                .maxTicketsPerMember(request.getMaxTicketsPerMember())
-                .freeTicketsPerRegistration(request.getFreeTicketsPerRegistration())
-                .ticketPrice(request.getTicketPrice())
+                // Member tier
+                .maxMemberTickets(request.getMaxMemberTickets())
+                .freeMemberTickets(request.getFreeMemberTickets())
+                .memberTicketPrice(request.getMemberTicketPrice())
+                // Guest tier
+                .maxGuestTickets(request.getMaxGuestTickets())
+                .freeGuestTickets(request.getFreeGuestTickets())
+                .guestTicketPrice(request.getGuestTicketPrice())
                 .platformFeePerTicket(request.getPlatformFeePerTicket())
                 .minimumAge(request.getMinimumAge())
                 .importantNotes(request.getImportantNotes())
@@ -75,25 +84,30 @@ public class EventService {
         Event event = findEventById(id);
 
         // Only apply non-null fields (PATCH semantics)
-        if (request.getTitle() != null)                         event.setTitle(request.getTitle());
-        if (request.getDescription() != null)                   event.setDescription(request.getDescription());
-        if (request.getCategory() != null)                      event.setCategory(request.getCategory());
-        if (request.getBannerUrl() != null)                     event.setBannerUrl(request.getBannerUrl());
-        if (request.getEventDate() != null)                     event.setEventDate(request.getEventDate());
-        if (request.getStartTime() != null)                     event.setStartTime(request.getStartTime());
-        if (request.getEndTime() != null)                       event.setEndTime(request.getEndTime());
-        if (request.getRegistrationDeadline() != null)          event.setRegistrationDeadline(request.getRegistrationDeadline());
-        if (request.getVenue() != null)                         event.setVenue(request.getVenue());
-        if (request.getAdditionalVenueInfo() != null)           event.setAdditionalVenueInfo(request.getAdditionalVenueInfo());
-        if (request.getTotalCapacity() != null)                 event.setTotalCapacity(request.getTotalCapacity());
-        if (request.getMaxTicketsPerMember() != null)           event.setMaxTicketsPerMember(request.getMaxTicketsPerMember());
-        if (request.getFreeTicketsPerRegistration() != null)    event.setFreeTicketsPerRegistration(request.getFreeTicketsPerRegistration());
-        if (request.getTicketPrice() != null)                   event.setTicketPrice(request.getTicketPrice());
-        if (request.getPlatformFeePerTicket() != null)          event.setPlatformFeePerTicket(request.getPlatformFeePerTicket());
-        if (request.getMinimumAge() != null)                    event.setMinimumAge(request.getMinimumAge());
-        if (request.getImportantNotes() != null)                event.setImportantNotes(request.getImportantNotes());
-        if (request.getContactPersonName() != null)             event.setContactPersonName(request.getContactPersonName());
-        if (request.getContactPersonPhone() != null)            event.setContactPersonPhone(request.getContactPersonPhone());
+        if (request.getTitle() != null)                     event.setTitle(request.getTitle());
+        if (request.getDescription() != null)               event.setDescription(request.getDescription());
+        if (request.getCategory() != null)                  event.setCategory(request.getCategory());
+        if (request.getBannerUrl() != null)                 event.setBannerUrl(request.getBannerUrl());
+        if (request.getEventDate() != null)                 event.setEventDate(request.getEventDate());
+        if (request.getStartTime() != null)                 event.setStartTime(request.getStartTime());
+        if (request.getEndTime() != null)                   event.setEndTime(request.getEndTime());
+        if (request.getRegistrationDeadline() != null)      event.setRegistrationDeadline(request.getRegistrationDeadline());
+        if (request.getVenue() != null)                     event.setVenue(request.getVenue());
+        if (request.getAdditionalVenueInfo() != null)       event.setAdditionalVenueInfo(request.getAdditionalVenueInfo());
+        if (request.getTotalCapacity() != null)             event.setTotalCapacity(request.getTotalCapacity());
+        // Member tier
+        if (request.getMaxMemberTickets() != null)          event.setMaxMemberTickets(request.getMaxMemberTickets());
+        if (request.getFreeMemberTickets() != null)         event.setFreeMemberTickets(request.getFreeMemberTickets());
+        if (request.getMemberTicketPrice() != null)         event.setMemberTicketPrice(request.getMemberTicketPrice());
+        // Guest tier
+        if (request.getMaxGuestTickets() != null)           event.setMaxGuestTickets(request.getMaxGuestTickets());
+        if (request.getFreeGuestTickets() != null)          event.setFreeGuestTickets(request.getFreeGuestTickets());
+        if (request.getGuestTicketPrice() != null)          event.setGuestTicketPrice(request.getGuestTicketPrice());
+        if (request.getPlatformFeePerTicket() != null)      event.setPlatformFeePerTicket(request.getPlatformFeePerTicket());
+        if (request.getMinimumAge() != null)                event.setMinimumAge(request.getMinimumAge());
+        if (request.getImportantNotes() != null)            event.setImportantNotes(request.getImportantNotes());
+        if (request.getContactPersonName() != null)         event.setContactPersonName(request.getContactPersonName());
+        if (request.getContactPersonPhone() != null)        event.setContactPersonPhone(request.getContactPersonPhone());
 
         return toEventResponse(eventRepository.save(event));
     }
@@ -216,8 +230,8 @@ public class EventService {
                 .title(event.getTitle())
                 .description(event.getDescription())
                 .category(event.getCategory())
-                .bannerUrl(event.getBannerUrl() != null && !event.getBannerUrl().isBlank() 
-                        ? s3Service.generatePresignedUrl(event.getBannerUrl(), Duration.ofDays(7)) 
+                .bannerUrl(event.getBannerUrl() != null && !event.getBannerUrl().isBlank()
+                        ? s3Service.generatePresignedUrl(event.getBannerUrl(), Duration.ofDays(7))
                         : null)
                 .eventDate(event.getEventDate())
                 .startTime(event.getStartTime())
@@ -228,14 +242,20 @@ public class EventService {
                 .totalCapacity(event.getTotalCapacity())
                 .bookedCount(booked)
                 .availableCount(event.getTotalCapacity() - booked)
-                .maxTicketsPerMember(event.getMaxTicketsPerMember())
-                .freeTicketsPerRegistration(event.getFreeTicketsPerRegistration())
-                .ticketPrice(event.getTicketPrice())
+                // Member tier
+                .maxMemberTickets(event.getMaxMemberTickets())
+                .freeMemberTickets(event.getFreeMemberTickets())
+                .memberTicketPrice(event.getMemberTicketPrice())
+                // Guest tier
+                .maxGuestTickets(event.getMaxGuestTickets())
+                .freeGuestTickets(event.getFreeGuestTickets())
+                .guestTicketPrice(event.getGuestTicketPrice())
                 .platformFeePerTicket(event.getPlatformFeePerTicket())
                 .minimumAge(event.getMinimumAge())
                 .importantNotes(event.getImportantNotes())
                 .contactPersonName(event.getContactPersonName())
                 .contactPersonPhone(event.getContactPersonPhone())
+                .media(toMediaDtoList(event))
                 .status(event.getStatus())
                 .uniqueEventLink(event.getUniqueEventLink())
                 .createdByName(event.getCreatedBy().getName())
@@ -247,14 +267,22 @@ public class EventService {
     private EventSummaryResponse toSummaryResponse(Event event) {
         int booked = registrationRepository.sumLockedTicketsForEvent(event.getId());
         boolean isSoldOut = booked >= event.getTotalCapacity();
-        
+
+        // Use the first PHOTO in the gallery as a thumbnail (if any)
+        String thumbnailUrl = event.getMedia().stream()
+                .filter(m -> m.getMediaType() == MediaType.PHOTO)
+                .findFirst()
+                .map(m -> s3Service.generatePresignedUrl(m.getUrl(), Duration.ofDays(7)))
+                .orElse(null);
+
         return EventSummaryResponse.builder()
                 .id(event.getId())
                 .title(event.getTitle())
                 .category(event.getCategory())
-                .bannerUrl(event.getBannerUrl() != null && !event.getBannerUrl().isBlank() 
-                        ? s3Service.generatePresignedUrl(event.getBannerUrl(), Duration.ofDays(7)) 
+                .bannerUrl(event.getBannerUrl() != null && !event.getBannerUrl().isBlank()
+                        ? s3Service.generatePresignedUrl(event.getBannerUrl(), Duration.ofDays(7))
                         : null)
+                .thumbnailUrl(thumbnailUrl)
                 .eventDate(event.getEventDate())
                 .startTime(event.getStartTime())
                 .venue(event.getVenue())
@@ -291,13 +319,19 @@ public class EventService {
                 .registrationDeadline(event.getRegistrationDeadline())
                 .venue(event.getVenue())
                 .additionalVenueInfo(event.getAdditionalVenueInfo())
-                .maxTicketsPerMember(event.getMaxTicketsPerMember())
-                .freeTicketsPerRegistration(event.getFreeTicketsPerRegistration())
-                .ticketPrice(event.getTicketPrice())
+                // Member tier
+                .maxMemberTickets(event.getMaxMemberTickets())
+                .freeMemberTickets(event.getFreeMemberTickets())
+                .memberTicketPrice(event.getMemberTicketPrice())
+                // Guest tier
+                .maxGuestTickets(event.getMaxGuestTickets())
+                .freeGuestTickets(event.getFreeGuestTickets())
+                .guestTicketPrice(event.getGuestTicketPrice())
                 .minimumAge(event.getMinimumAge())
                 .importantNotes(event.getImportantNotes())
                 .contactPersonName(event.getContactPersonName())
                 .contactPersonPhone(event.getContactPersonPhone())
+                .media(toMediaDtoList(event))
                 .totalCapacity(event.getTotalCapacity())
                 .availableCount(available)
                 .uniqueEventLink(event.getUniqueEventLink())
@@ -576,5 +610,102 @@ public class EventService {
                 .complimentaryWaived(complimentaryWaived)
                 .revenueThisMonth(revenueThisMonth)
                 .build();
+    }
+    // ─── Phase 8: Event Media Gallery ────────────────────────────────────────────
+
+    @Transactional
+    public EventMediaDto addPhoto(UUID eventId, MultipartFile file, String caption, int sortOrder) throws IOException {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new ResourceNotFoundException("Event not found"));
+
+        String s3Key = s3Service.uploadFile(file, "events/media");
+
+        EventMedia media = EventMedia.builder()
+                .event(event)
+                .mediaType(MediaType.PHOTO)
+                .url(s3Key)
+                .caption(caption)
+                .sortOrder(sortOrder)
+                .build();
+
+        media = eventMediaRepository.save(media);
+        return toMediaDto(media);
+    }
+
+    @Transactional
+    public EventMediaDto addVideo(UUID eventId, String url, String caption, int sortOrder) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new ResourceNotFoundException("Event not found"));
+
+        EventMedia media = EventMedia.builder()
+                .event(event)
+                .mediaType(MediaType.VIDEO)
+                .url(url)
+                .caption(caption)
+                .sortOrder(sortOrder)
+                .build();
+
+        media = eventMediaRepository.save(media);
+        return toMediaDto(media);
+    }
+
+    @Transactional
+    public void deleteMedia(UUID eventId, UUID mediaId) {
+        EventMedia media = eventMediaRepository.findByIdAndEventId(mediaId, eventId)
+                .orElseThrow(() -> new ResourceNotFoundException("Media not found for this event"));
+
+        if (media.getMediaType() == MediaType.PHOTO) {
+            s3Service.deleteFile(media.getUrl());
+        }
+        eventMediaRepository.delete(media);
+    }
+
+    @Transactional
+    public void reorderMedia(UUID eventId, List<UUID> orderedIds) {
+        List<EventMedia> existingMedia = eventMediaRepository.findByEventIdOrderBySortOrderAsc(eventId);
+
+        for (int i = 0; i < orderedIds.size(); i++) {
+            UUID mediaId = orderedIds.get(i);
+            final int index = i;
+            existingMedia.stream()
+                    .filter(m -> m.getId().equals(mediaId))
+                    .findFirst()
+                    .ifPresent(m -> {
+                        m.setSortOrder(index);
+                        eventMediaRepository.save(m);
+                    });
+        }
+    }
+
+    private EventMediaDto toMediaDto(EventMedia m) {
+        return EventMediaDto.builder()
+                .id(m.getId())
+                .mediaType(m.getMediaType())
+                .url(m.getMediaType() == MediaType.PHOTO
+                        ? s3Service.generatePresignedUrl(m.getUrl(), Duration.ofDays(7))
+                        : m.getUrl())
+                .caption(m.getCaption())
+                .sortOrder(m.getSortOrder())
+                .uploadedAt(m.getUploadedAt())
+                .build();
+    }
+
+    /**
+     * Converts the event's media gallery into a list of EventMediaDto.
+     * PHOTO items get a presigned S3 URL; VIDEO items keep their embed URL as-is.
+     */
+    private java.util.List<EventMediaDto> toMediaDtoList(Event event) {
+        return event.getMedia().stream()
+                .map(m -> EventMediaDto.builder()
+                        .id(m.getId())
+                        .mediaType(m.getMediaType())
+                        .url(m.getMediaType() == MediaType.PHOTO
+                                ? s3Service.generatePresignedUrl(m.getUrl(), Duration.ofDays(7))
+                                : m.getUrl())
+                        .caption(m.getCaption())
+                        .sortOrder(m.getSortOrder())
+                        .uploadedAt(m.getUploadedAt())
+                        .build())
+                .toList();
     }
 }

@@ -169,6 +169,64 @@ public class EventController {
     }
 
     /**
+     * POST /api/events/{id}/media/photo
+     * Uploads a photo to the event's gallery.
+     */
+    @PostMapping(value = "/api/events/{id}/media/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<EventResponse> addPhoto(
+            @PathVariable UUID id,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "caption", required = false) String caption,
+            @RequestParam("sortOrder") int sortOrder) throws IOException {
+
+        eventService.addPhoto(id, file, caption, sortOrder);
+        return ResponseEntity.ok(eventService.getEventById(id));
+    }
+
+    /**
+     * POST /api/events/{id}/media/video
+     * Adds a video URL to the event's gallery.
+     */
+    @PostMapping("/api/events/{id}/media/video")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<EventResponse> addVideo(
+            @PathVariable UUID id,
+            @Valid @RequestBody AddVideoRequest request) {
+
+        eventService.addVideo(id, request.getUrl(), request.getCaption(), request.getSortOrder());
+        return ResponseEntity.ok(eventService.getEventById(id));
+    }
+
+    /**
+     * DELETE /api/events/{id}/media/{mediaId}
+     * Deletes a media item from the event's gallery.
+     */
+    @DeleteMapping("/api/events/{id}/media/{mediaId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<java.util.Map<String, String>> deleteMedia(
+            @PathVariable UUID id,
+            @PathVariable UUID mediaId) {
+
+        eventService.deleteMedia(id, mediaId);
+        return ResponseEntity.ok(java.util.Map.of("message", "Media deleted successfully"));
+    }
+
+    /**
+     * PATCH /api/events/{id}/media/reorder
+     * Reorders the media items in the event's gallery.
+     */
+    @PatchMapping("/api/events/{id}/media/reorder")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<EventResponse> reorderMedia(
+            @PathVariable UUID id,
+            @Valid @RequestBody ReorderMediaRequest request) {
+
+        eventService.reorderMedia(id, request.getOrderedIds());
+        return ResponseEntity.ok(eventService.getEventById(id));
+    }
+
+    /**
      * GET /api/events
      * Returns a summary list of all PUBLISHED events.
      * Access: PUBLIC

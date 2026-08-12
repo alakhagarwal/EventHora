@@ -17,18 +17,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+
 /**
  * Represents an RIC event (e.g. Musical Evening, Kathak Dance).
  *
- * Pricing model (simplified):
- *  - One unified ticketPrice applies to every ticket (member + any accompanying person).
- *  - freeTicketsPerRegistration defines how many of those are free per booking.
- *  - maxTicketsPerMember is the total a member can book in a single registration
- *    (covering both themselves and anyone they bring along).
+ * Dual-tier pricing model:
+ *  - Member tickets  (RIC members)   → maxMemberTickets, freeMemberTickets, memberTicketPrice
+ *  - Guest tickets   (non-members)   → maxGuestTickets,  freeGuestTickets,  guestTicketPrice
+ *  - totalCapacity is the single hard ceiling combining both tiers.
+ *  - A member must book at least 1 member ticket and 0–maxGuestTickets guest tickets.
+ *  - Free-ticket quotas are per-booking (not per-event): each registration gets up to
+ *    freeMemberTickets member tickets free + freeGuestTickets guest tickets free.
  *  - Registration has a hard deadline (registrationDeadline).
- *  - Some events require members to have paid their annual fee.
  *  - importantNotes stores the free-form bullet points admins write in event communications.
- *  - Show and dinner can be at different venues (venue + additionalVenueInfo).
+ *  - Media gallery (photos + videos) is stored in the event_media side-table.
  */
 @Entity
 @Table(name = "events")
@@ -80,26 +82,38 @@ public class Event {
     private String additionalVenueInfo;           // Secondary venue: "Convention Hall with Lawn"
                                                   // Used for gala dinners or post-show activities
 
-    // ─── Capacity & Tickets ───────────────────────────────────────────────────
+    // ─── Capacity ─────────────────────────────────────────────────────────────
 
     @Column(nullable = false)
-    private int totalCapacity;                    // Total seats available for the event
+    private int totalCapacity;                    // Hard ceiling — total seats (member + guest combined)
+
+    // ─── Member Ticket Tier (RIC members) ────────────────────────────────────
 
     @Column(nullable = false)
-    private int maxTicketsPerMember;              // Total tickets per registration (member + anyone they bring)
+    private int maxMemberTickets;                 // Max member-tier seats per booking (min 1)
 
     @Column(nullable = false)
-    private int freeTicketsPerRegistration;       // How many of those maxTicketsPerMember are free
-                                                  // e.g. 2 free out of 4 total → pay for 2
+    private int freeMemberTickets;                // How many member tickets are free per booking
+                                                  // e.g. 2 free → first 2 member tickets cost ₹0
 
     @Column(nullable = false, precision = 10, scale = 2)
-    private BigDecimal ticketPrice;               // Unified price per paid ticket (same for everyone)
-                                                  // 0.00 for fully free events
+    private BigDecimal memberTicketPrice;         // Price per paid member ticket (0.00 = fully free)
+
+    // ─── Guest Ticket Tier (non-members) ─────────────────────────────────────
+
+    @Column(nullable = false)
+    private int maxGuestTickets;                  // Max guest seats per booking (0 = guests not allowed)
+
+    @Column(nullable = false)
+    private int freeGuestTickets;                 // How many guest tickets are free per booking
+
+    @Column(nullable = false, precision = 10, scale = 2)
+    private BigDecimal guestTicketPrice;          // Price per paid guest ticket (0.00 = guests are free)
 
     // ─── Platform Fee ─────────────────────────────────────────────────────────
 
     @Column(nullable = false, precision = 10, scale = 2)
-    private BigDecimal platformFeePerTicket;     // EventHora fee per paid ticket
+    private BigDecimal platformFeePerTicket;      // EventHora fee per paid ticket (member or guest)
 
     // ─── Event Rules ──────────────────────────────────────────────────────────
 
@@ -117,6 +131,14 @@ public class Event {
     @Builder.Default //  If someone builds an Event but forgets to provide importantNotes, it would normally default to null. By using = new ArrayList<>() combined with @Builder.Default, we guarantee it will always be an empty list instead of a NullPointerException waiting to happen.
     private List<String> importantNotes = new ArrayList<>();
     // e.g. ["Please carry your membership card", "Blocking seats not permitted"]
+
+    // ─── Media Gallery ────────────────────────────────────────────────────────
+
+    @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    @OrderBy("sortOrder ASC")
+    private List<EventMedia> media = new ArrayList<>();
+    // Photos → S3 (presigned URL at read time)   Videos → external embed URL
 
     // ─── Contact ──────────────────────────────────────────────────────────────
 
