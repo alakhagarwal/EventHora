@@ -404,9 +404,12 @@ POST /api/events
   "venue": "Main Audi, RIC",
   "additionalVenueInfo": "Convention Hall with Lawn",
   "totalCapacity": 500,
-  "maxTicketsPerMember": 4,
-  "freeTicketsPerRegistration": 2,
-  "ticketPrice": 1000.00,
+  "maxMemberTickets": 2,
+  "freeMemberTickets": 1,
+  "memberTicketPrice": 1000.00,
+  "maxGuestTickets": 2,
+  "freeGuestTickets": 0,
+  "guestTicketPrice": 1500.00,
   "platformFeePerTicket": 0.00,
   "minimumAge": 18,
   "importantNotes": [
@@ -430,9 +433,12 @@ POST /api/events
 | `venue` | String | ✅ | Primary venue |
 | `additionalVenueInfo` | String | ❌ | Secondary venue (e.g., for gala dinner) |
 | `totalCapacity` | Integer | ✅ | Min 1 |
-| `maxTicketsPerMember` | Integer | ✅ | Total tickets per registration (member + anyone they bring) |
-| `freeTicketsPerRegistration` | Integer | ✅ | How many of those are free |
-| `ticketPrice` | Decimal | ✅ | Unified price per paid ticket. `0.00` for fully free events |
+| `maxMemberTickets` | Integer | ✅ | Maximum tickets for members in a single registration |
+| `freeMemberTickets` | Integer | ✅ | How many of the member tickets are free |
+| `memberTicketPrice` | Decimal | ✅ | Price per paid member ticket. `0.00` for fully free |
+| `maxGuestTickets` | Integer | ✅ | Maximum tickets for guests in a single registration |
+| `freeGuestTickets` | Integer | ✅ | How many of the guest tickets are free |
+| `guestTicketPrice` | Decimal | ✅ | Price per paid guest ticket. `0.00` for fully free |
 | `platformFeePerTicket` | Decimal | ✅ | EventHora fee per paid ticket |
 | `minimumAge` | Integer | ❌ | `null` = no restriction |
 | `importantNotes` | Array of strings | ❌ | Bullet points shown on event page |
@@ -573,9 +579,12 @@ No request body needed.
   "totalCapacity": 500,
   "bookedCount": 120,
   "availableCount": 380,
-  "maxTicketsPerMember": 4,
-  "freeTicketsPerRegistration": 2,
-  "ticketPrice": 1000.00,
+  "maxMemberTickets": 2,
+  "freeMemberTickets": 1,
+  "memberTicketPrice": 1000.00,
+  "maxGuestTickets": 2,
+  "freeGuestTickets": 0,
+  "guestTicketPrice": 1500.00,
   "platformFeePerTicket": 0.00,
   "minimumAge": 18,
   "importantNotes": ["Please carry your membership card"],
@@ -583,6 +592,16 @@ No request body needed.
   "contactPersonPhone": "9462200225",
   "status": "PUBLISHED",
   "uniqueEventLink": "mere-mehboob-na-ja-3f8a2b",
+  "media": [
+    {
+      "id": "uuid-of-media",
+      "mediaType": "PHOTO",
+      "url": "https://bucket.s3.region.amazonaws.com/events/media/photo.jpg",
+      "caption": "Stage setup",
+      "sortOrder": 0,
+      "uploadedAt": "2026-07-05T14:20:00"
+    }
+  ],
   "createdByName": "EventHora Admin",
   "createdAt": "2026-07-01T10:00:00",
   "updatedAt": "2026-07-05T14:30:00"
@@ -618,7 +637,40 @@ This URL is saved to `Event.bannerUrl` and is what the frontend uses to display 
 
 ---
 
-### 7. List Public Events (Member Landing Page)
+### 8. Event Media Gallery API
+
+Endpoints to manage photos and videos for an event's public gallery.
+
+**Add Photo:**
+```
+POST /api/events/{id}/media/photo
+Content-Type: multipart/form-data
+```
+Requires `file`, `caption` (optional), and `sortOrder`. Uploads directly to S3. Returns updated `EventResponse`.
+
+**Add Video:**
+```
+POST /api/events/{id}/media/video
+Content-Type: application/json
+```
+Requires JSON body `{ "url": "https://...", "caption": "...", "sortOrder": 1 }`. Returns updated `EventResponse`.
+
+**Delete Media:**
+```
+DELETE /api/events/{id}/media/{mediaId}
+```
+Deletes media from the database (and from S3 if it's a PHOTO).
+
+**Reorder Media:**
+```
+PATCH /api/events/{id}/media/reorder
+Content-Type: application/json
+```
+Requires JSON body `{ "orderedIds": ["uuid-1", "uuid-2"] }`. Returns updated `EventResponse`.
+
+---
+
+### 9. List Public Events (Member Landing Page)
 
 Returns a summary list of all `PUBLISHED` events, ordered by event date (newest first).
 
@@ -637,15 +689,19 @@ Returns an array of `PublicEventResponse` objects. Each includes:
 | `title` | String | Event name |
 | `category` | String | Event category |
 | `bannerUrl` | String | Pre-signed S3 URL (valid 7 days), or `null` |
+| `thumbnailUrl` | String | Pre-signed S3 URL of the first gallery photo, or `null` |
 | `eventDate` | Date | `YYYY-MM-DD` |
 | `startTime` | Time | `HH:mm:ss` |
 | `endTime` | Time | `HH:mm:ss` |
 | `registrationDeadline` | DateTime | After this, `registrationOpen` becomes `false` |
 | `venue` | String | Primary venue |
 | `additionalVenueInfo` | String | Secondary venue info, or `null` |
-| `maxTicketsPerMember` | Integer | Max tickets a single member can book |
-| `freeTicketsPerRegistration` | Integer | How many of those tickets are free |
-| `ticketPrice` | Decimal | Price per paid ticket (`0.00` for free events) |
+| `maxMemberTickets` | Integer | Max member tickets allowed |
+| `freeMemberTickets` | Integer | How many member tickets are free |
+| `memberTicketPrice` | Decimal | Price per paid member ticket |
+| `maxGuestTickets` | Integer | Max guest tickets allowed |
+| `freeGuestTickets` | Integer | How many guest tickets are free |
+| `guestTicketPrice` | Decimal | Price per paid guest ticket |
 | `minimumAge` | Integer | Minimum age requirement, or `null` |
 | `importantNotes` | Array\<String\> | Bullet-point notes from the invite |
 | `contactPersonName` | String | Contact name for queries |
@@ -658,7 +714,7 @@ Returns an array of `PublicEventResponse` objects. Each includes:
 
 ---
 
-### 8. Get Public Event Details
+### 10. Get Public Event Details
 
 Returns the full details of a single `PUBLISHED` event by its unique link. Used for the event detail page and booking flow.
 
@@ -674,7 +730,8 @@ GET /api/events/{link}
 Returns the same `PublicEventResponse` shape as section 7 above. All fields are identical.
 
 > **Frontend guidance for the booking page:**
-> - Cap the quantity selector at `Math.min(availableCount, maxTicketsPerMember)` — never let the member select more tickets than are available.
+> - Cap the member quantity selector at `Math.min(availableCount, maxMemberTickets)`.
+> - Cap the guest quantity selector at `Math.min(availableCount - memberQuantity, maxGuestTickets)`.
 > - Disable the "Book Now" button when `registrationOpen == false` or `isSoldOut == true`.
 > - Show a "Sold Out" badge when `isSoldOut == true`.
 
