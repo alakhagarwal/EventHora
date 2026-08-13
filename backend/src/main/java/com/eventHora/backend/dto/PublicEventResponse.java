@@ -18,6 +18,8 @@ import java.util.UUID;
  *   - platformFeePerTicket (internal billing detail)
  *   - createdBy (internal audit)
  *   - status (always PUBLISHED for this endpoint)
+ *   - totalCapacity / availableCount (seat count is hidden from members by design;
+ *     isSoldOut and registrationOpen convey all the UI state the frontend needs)
  *
  * Includes both ticket tiers so the booking form can show:
  *   - How many member tickets they can book and what each costs
@@ -75,11 +77,6 @@ public class PublicEventResponse {
     // ─── Media Gallery ────────────────────────────────────────────────────────
 
     private List<EventMediaDto> media;            // Ordered by sortOrder ASC; photos are presigned
-
-    // ─── Capacity ─────────────────────────────────────────────────────────────
-
-    private int totalCapacity;
-    private int availableCount;                   // Remaining seats (totalCapacity - lockedTickets)
 
     // ─── Registration ─────────────────────────────────────────────────────────
 

@@ -731,11 +731,9 @@ Returns an array of `PublicEventResponse` objects. Each includes:
 | `importantNotes` | Array\<String\> | Bullet-point notes from the invite |
 | `contactPersonName` | String | Contact name for queries |
 | `contactPersonPhone` | String | Contact phone for queries |
-| `totalCapacity` | Integer | Maximum total tickets for the event |
-| `availableCount` | Integer | Remaining seats (`totalCapacity - lockedTickets`). Use this to cap the quantity selector on the booking page. Never goes below `0`. |
 | `uniqueEventLink` | String | URL slug for this event |
 | `registrationOpen` | Boolean | `true` if PUBLISHED + deadline not passed + not sold out |
-| `isSoldOut` | Boolean | `true` when `availableCount == 0` |
+| `isSoldOut` | Boolean | `true` when all seats are taken |
 
 ---
 
@@ -755,9 +753,10 @@ GET /api/events/{link}
 Returns the same `PublicEventResponse` shape as section 7 above. All fields are identical.
 
 > **Frontend guidance for the booking page:**
-> - Cap the quantity selector at `Math.min(availableCount, maxTicketsPerMember)` — never let the member select more tickets than are available.
+> - Cap the member/guest quantity selectors at `maxMemberTickets` and `maxGuestTickets` respectively.
 > - Disable the "Book Now" button when `registrationOpen == false` or `isSoldOut == true`.
 > - Show a "Sold Out" badge when `isSoldOut == true`.
+> - Seat availability is **not** exposed to members — the server enforces capacity at `/initiate`.
 
 **Error Responses:**
 

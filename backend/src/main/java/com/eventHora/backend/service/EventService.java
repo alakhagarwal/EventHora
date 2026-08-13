@@ -332,8 +332,6 @@ public class EventService {
                 .contactPersonName(event.getContactPersonName())
                 .contactPersonPhone(event.getContactPersonPhone())
                 .media(toMediaDtoList(event))
-                .totalCapacity(event.getTotalCapacity())
-                .availableCount(available)
                 .uniqueEventLink(event.getUniqueEventLink())
                 .registrationOpen(
                         event.getStatus() == EventStatus.PUBLISHED
