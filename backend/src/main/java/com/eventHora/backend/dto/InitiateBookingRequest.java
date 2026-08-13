@@ -1,6 +1,5 @@
 package com.eventHora.backend.dto;
 
-import com.eventHora.backend.Enum.PaymentPreference;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -17,6 +16,9 @@ import java.util.UUID;
  * A member must book at least 1 member ticket (themselves).
  * Guest tickets are optional (0 is valid — attending alone).
  * The backend enforces that guestQuantity <= event.maxGuestTickets.
+ *
+ * Payment is always handled online via Razorpay for member self-service bookings.
+ * The Pay-at-Gate option is only available through the admin/staff booking flow.
  */
 @Data
 public class InitiateBookingRequest {
@@ -32,7 +34,4 @@ public class InitiateBookingRequest {
 
     @Min(value = 0, message = "Guest quantity cannot be negative")
     private int guestQuantity;               // Non-member (guest) seats (0 = attending alone)
-
-    @NotNull(message = "Payment preference is required")
-    private PaymentPreference paymentPreference;  // ONLINE or AT_GATE
 }

@@ -1,6 +1,5 @@
 package com.eventHora.backend.dto;
 
-import com.eventHora.backend.Enum.PaymentPreference;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,6 +14,9 @@ import java.util.UUID;
  * Locks the booking intent between /initiate and /verify-otp.
  * Using Redis prevents the frontend from changing quantities or eventId
  * between the two calls — the backend always uses what was locked here.
+ *
+ * Payment preference is no longer stored here — member self-service bookings
+ * always use online payment. Only the quantities need to be locked.
  */
 @Data
 @Builder
@@ -25,5 +27,4 @@ public class BookingIntent implements Serializable {
     private UUID eventId;
     private int memberQuantity;            // RIC-member tier seats locked
     private int guestQuantity;             // Guest tier seats locked
-    private PaymentPreference paymentPreference;
 }

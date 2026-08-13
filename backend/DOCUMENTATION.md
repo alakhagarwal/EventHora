@@ -404,8 +404,8 @@ POST /api/events
   "venue": "Main Audi, RIC",
   "additionalVenueInfo": "Convention Hall with Lawn",
   "totalCapacity": 500,
-  "maxMemberTickets": 2,
-  "freeMemberTickets": 1,
+  "maxMemberTickets": 4,
+  "freeMemberTickets": 2,
   "memberTicketPrice": 1000.00,
   "maxGuestTickets": 2,
   "freeGuestTickets": 0,
@@ -433,13 +433,13 @@ POST /api/events
 | `venue` | String | ✅ | Primary venue |
 | `additionalVenueInfo` | String | ❌ | Secondary venue (e.g., for gala dinner) |
 | `totalCapacity` | Integer | ✅ | Min 1 |
-| `maxMemberTickets` | Integer | ✅ | Maximum tickets for members in a single registration |
-| `freeMemberTickets` | Integer | ✅ | How many of the member tickets are free |
-| `memberTicketPrice` | Decimal | ✅ | Price per paid member ticket. `0.00` for fully free |
-| `maxGuestTickets` | Integer | ✅ | Maximum tickets for guests in a single registration |
-| `freeGuestTickets` | Integer | ✅ | How many of the guest tickets are free |
-| `guestTicketPrice` | Decimal | ✅ | Price per paid guest ticket. `0.00` for fully free |
-| `platformFeePerTicket` | Decimal | ✅ | EventHora fee per paid ticket |
+| `maxMemberTickets` | Integer | ✅ | Max member tickets per registration |
+| `freeMemberTickets` | Integer | ✅ | How many member tickets are free |
+| `memberTicketPrice` | Decimal | ✅ | Price per paid member ticket |
+| `maxGuestTickets` | Integer | ✅ | Max guest tickets per registration |
+| `freeGuestTickets` | Integer | ✅ | How many guest tickets are free |
+| `guestTicketPrice` | Decimal | ✅ | Price per paid guest ticket |
+| `platformFeePerTicket` | Decimal | ✅ | EventHora fee per paid ticket (same for both tiers) |
 | `minimumAge` | Integer | ❌ | `null` = no restriction |
 | `importantNotes` | Array of strings | ❌ | Bullet points shown on event page |
 | `contactPersonName` | String | ❌ | |
@@ -539,6 +539,7 @@ GET /api/admin/events
     "venue": "Main Audi, RIC",
     "status": "PUBLISHED",
     "uniqueEventLink": "mere-mehboob-na-ja-3f8a2b",
+    "thumbnailUrl": "https://bucket.s3.region.amazonaws.com/events/media/photo1.jpg",
     "totalCapacity": 500,
     "bookedCount": 120,
     "availableCount": 380,
@@ -579,8 +580,8 @@ No request body needed.
   "totalCapacity": 500,
   "bookedCount": 120,
   "availableCount": 380,
-  "maxMemberTickets": 2,
-  "freeMemberTickets": 1,
+  "maxMemberTickets": 4,
+  "freeMemberTickets": 2,
   "memberTicketPrice": 1000.00,
   "maxGuestTickets": 2,
   "freeGuestTickets": 0,
@@ -590,18 +591,18 @@ No request body needed.
   "importantNotes": ["Please carry your membership card"],
   "contactPersonName": "Mr. Keyur Patel",
   "contactPersonPhone": "9462200225",
-  "status": "PUBLISHED",
-  "uniqueEventLink": "mere-mehboob-na-ja-3f8a2b",
   "media": [
     {
-      "id": "uuid-of-media",
+      "id": "uuid",
       "mediaType": "PHOTO",
-      "url": "https://bucket.s3.region.amazonaws.com/events/media/photo.jpg",
-      "caption": "Stage setup",
+      "url": "https://...",
+      "caption": "Stage preparation",
       "sortOrder": 0,
-      "uploadedAt": "2026-07-05T14:20:00"
+      "uploadedAt": "2026-07-06T10:00:00"
     }
   ],
+  "status": "PUBLISHED",
+  "uniqueEventLink": "mere-mehboob-na-ja-3f8a2b",
   "createdByName": "EventHora Admin",
   "createdAt": "2026-07-01T10:00:00",
   "updatedAt": "2026-07-05T14:30:00"
@@ -637,36 +638,60 @@ This URL is saved to `Event.bannerUrl` and is what the frontend uses to display 
 
 ---
 
-### 8. Event Media Gallery API
+### 8. Media Gallery Management
 
-Endpoints to manage photos and videos for an event's public gallery.
+Provides endpoints to manage an event's media gallery (photos and videos).
 
-**Add Photo:**
+**Access:** ADMIN
+
+#### Add Photo
+Uploads a photo to S3 and adds it to the gallery.
 ```
 POST /api/events/{id}/media/photo
 Content-Type: multipart/form-data
 ```
-Requires `file`, `caption` (optional), and `sortOrder`. Uploads directly to S3. Returns updated `EventResponse`.
+| Form field | Type | Required | Notes |
+|---|---|---|---|
+| `file` | File | ✅ | Image file |
+| `caption` | String | ❌ | Caption for the photo |
+| `sortOrder` | Integer | ✅ | Position in the gallery |
 
-**Add Video:**
+**Success Response `200 OK`:** Returns full `EventResponse` including updated `media` list.
+
+#### Add Video
+Adds an external video URL (e.g., YouTube embed) to the gallery.
 ```
 POST /api/events/{id}/media/video
 Content-Type: application/json
 ```
-Requires JSON body `{ "url": "https://...", "caption": "...", "sortOrder": 1 }`. Returns updated `EventResponse`.
+```json
+{
+  "url": "https://www.youtube.com/embed/...",
+  "caption": "Event Highlight",
+  "sortOrder": 1
+}
+```
+**Success Response `200 OK`:** Returns full `EventResponse`.
 
-**Delete Media:**
+#### Delete Media
+Deletes a media item from the gallery (and from S3 if it's a photo).
 ```
 DELETE /api/events/{id}/media/{mediaId}
 ```
-Deletes media from the database (and from S3 if it's a PHOTO).
+**Success Response `200 OK`:** `{"message": "Media deleted successfully"}`
 
-**Reorder Media:**
+#### Reorder Media
+Reorders the items in the media gallery.
 ```
 PATCH /api/events/{id}/media/reorder
 Content-Type: application/json
 ```
-Requires JSON body `{ "orderedIds": ["uuid-1", "uuid-2"] }`. Returns updated `EventResponse`.
+```json
+{
+  "orderedIds": ["uuid-1", "uuid-2", "uuid-3"]
+}
+```
+**Success Response `200 OK`:** Returns full `EventResponse` with reordered `media`.
 
 ---
 
@@ -689,19 +714,19 @@ Returns an array of `PublicEventResponse` objects. Each includes:
 | `title` | String | Event name |
 | `category` | String | Event category |
 | `bannerUrl` | String | Pre-signed S3 URL (valid 7 days), or `null` |
-| `thumbnailUrl` | String | Pre-signed S3 URL of the first gallery photo, or `null` |
 | `eventDate` | Date | `YYYY-MM-DD` |
 | `startTime` | Time | `HH:mm:ss` |
 | `endTime` | Time | `HH:mm:ss` |
 | `registrationDeadline` | DateTime | After this, `registrationOpen` becomes `false` |
 | `venue` | String | Primary venue |
 | `additionalVenueInfo` | String | Secondary venue info, or `null` |
-| `maxMemberTickets` | Integer | Max member tickets allowed |
+| `maxMemberTickets` | Integer | Max member tickets a single member can book |
 | `freeMemberTickets` | Integer | How many member tickets are free |
-| `memberTicketPrice` | Decimal | Price per paid member ticket |
-| `maxGuestTickets` | Integer | Max guest tickets allowed |
+| `memberTicketPrice` | Decimal | Price per paid member ticket (`0.00` for free events) |
+| `maxGuestTickets` | Integer | Max guest tickets per registration |
 | `freeGuestTickets` | Integer | How many guest tickets are free |
 | `guestTicketPrice` | Decimal | Price per paid guest ticket |
+| `media` | Array\<EventMediaDto\> | List of photos/videos for the gallery |
 | `minimumAge` | Integer | Minimum age requirement, or `null` |
 | `importantNotes` | Array\<String\> | Bullet-point notes from the invite |
 | `contactPersonName` | String | Contact name for queries |
@@ -730,8 +755,7 @@ GET /api/events/{link}
 Returns the same `PublicEventResponse` shape as section 7 above. All fields are identical.
 
 > **Frontend guidance for the booking page:**
-> - Cap the member quantity selector at `Math.min(availableCount, maxMemberTickets)`.
-> - Cap the guest quantity selector at `Math.min(availableCount - memberQuantity, maxGuestTickets)`.
+> - Cap the quantity selector at `Math.min(availableCount, maxTicketsPerMember)` — never let the member select more tickets than are available.
 > - Disable the "Book Now" button when `registrationOpen == false` or `isSoldOut == true`.
 > - Show a "Sold Out" badge when `isSoldOut == true`.
 
@@ -1004,7 +1028,8 @@ POST /api/admin/bookings/register
   "memberId": "RIC-2024-04512",
   "memberType": "INDIAN",
   "eventId": "550e8400-e29b-41d4-a716-446655440000",
-  "quantity": 2,
+  "memberQuantity": 2,
+  "guestQuantity": 0,
   "action": "PAY_AT_GATE"
 }
 ```
@@ -1016,7 +1041,8 @@ POST /api/admin/bookings/register
 | `memberId` | String | ✅ | RIC Member ID. Must start with `RIC` (validated against the mock RIC API) |
 | `memberType` | String | ✅ | `INDIAN` or `OVERSEAS` |
 | `eventId` | UUID | ✅ | The event to register for |
-| `quantity` | Integer | ✅ | Minimum 1, max = `event.maxTicketsPerMember` |
+| `memberQuantity` | Integer | ✅ | Minimum 1, max = `event.maxMemberTickets` |
+| `guestQuantity` | Integer | ✅ | Minimum 0, max = `event.maxGuestTickets` |
 | `action` | String | ✅ | `PAY_AT_GATE` or `COMPLIMENTARY`. See payment logic below. |
 
 > **No `ONLINE` option.** Admin bookings never go through Razorpay. There are only two choices for paid events.
@@ -1058,7 +1084,7 @@ POST /api/admin/bookings/register
 | Field | Type | Notes |
 |---|---|---|
 | `ticketReference` | String | The booking's unique ticket ID — same format as member-self-service bookings |
-| `quantity` | Integer | Number of tickets booked |
+| `quantity` | Integer | Total number of tickets booked (`memberQuantity + guestQuantity`) |
 | `totalAmount` | Decimal | `0.00` for FREE or COMPLIMENTARY, calculated price for PAY_AT_GATE |
 | `paymentStatus` | String | `FREE`, `PAY_AT_GATE`, or `COMPLIMENTARY` |
 | `memberId` | String | The member who was registered |
@@ -1536,12 +1562,15 @@ POST /api/registration/initiate
 {
   "sessionToken": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
   "eventId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-  "quantity": 3,
-  "paymentPreference": "ONLINE"
+  "memberQuantity": 2,
+  "guestQuantity": 1
 }
 ```
-- `paymentPreference` must be either `ONLINE` or `AT_GATE`.
-- `quantity` must be between 1 and the event's `maxTicketsPerMember`.
+- `memberQuantity` must be between 1 and the event's `maxMemberTickets`.
+- `guestQuantity` must be between 0 and the event's `maxGuestTickets`.
+
+> **Payment is always online.** Members are always routed through the Razorpay payment flow.
+> The Pay-at-Gate option is exclusively available to ADMIN/STAFF via the Admin Booking API.
 
 **Success Response `200 OK`:**
 ```json
@@ -1587,7 +1616,7 @@ POST /api/registration/verify-otp
 
 #### Path A — Free Booking (`paymentStatus: "FREE"`)
 
-Triggered when `totalAmount == 0` (all tickets are free based on `freeTicketsPerRegistration`).
+Triggered when `totalAmount == 0` (all tickets are free based on `freeMemberTickets` / `freeGuestTickets`).
 
 **Success Response `200 OK`:**
 ```json
@@ -1595,7 +1624,11 @@ Triggered when `totalAmount == 0` (all tickets are free based on `freeTicketsPer
   "ticketReference": "TKT-2026-AB12CD",
   "eventTitle": "Summer Gala Dinner 2026",
   "quantity": 1,
+  "memberQuantity": 1,
+  "guestQuantity": 0,
   "totalAmount": 0.00,
+  "memberAmount": 0.00,
+  "guestAmount": 0.00,
   "paymentStatus": "FREE",
   "razorpayOrderId": null
 }
@@ -1614,12 +1647,18 @@ Triggered when `paymentPreference == "AT_GATE"` and the event has a paid amount.
   "ticketReference": "TKT-2026-XY9Z01",
   "eventTitle": "Summer Gala Dinner 2026",
   "quantity": 3,
+  "memberQuantity": 2,
+  "guestQuantity": 1,
   "totalAmount": 2000.00,
+  "memberAmount": 1000.00,
+  "guestAmount": 1000.00,
   "paymentStatus": "PAY_AT_GATE",
   "razorpayOrderId": null
 }
 ```
-→ Frontend shows a **"Seat Reserved — Pay ₹2000 at the venue"** screen with the QR code.
+→ Frontend shows a **"Seat Reserved"** screen with the QR code.
+
+> **This path is no longer reachable through member self-service.** Pay-at-Gate bookings are only created by ADMIN/STAFF via `POST /api/admin/bookings/register`.
 
 ---
 
@@ -1633,7 +1672,11 @@ Triggered when `paymentPreference == "ONLINE"` and `totalAmount > 0`. A Razorpay
   "ticketReference": "TKT-2026-MN4P8Q",
   "eventTitle": "Summer Gala Dinner 2026",
   "quantity": 3,
+  "memberQuantity": 2,
+  "guestQuantity": 1,
   "totalAmount": 2000.00,
+  "memberAmount": 1000.00,
+  "guestAmount": 1000.00,
   "paymentStatus": "PENDING",
   "razorpayOrderId": "order_PwZa8xyzABC123"
 }
@@ -1645,12 +1688,19 @@ Triggered when `paymentPreference == "ONLINE"` and `totalAmount > 0`. A Razorpay
 #### Price Calculation Logic
 
 ```
-paidTickets = max(0, quantity - event.freeTicketsPerRegistration)
-totalAmount = paidTickets × event.ticketPrice
+paidMember = max(0, memberQuantity - event.freeMemberTickets)
+paidGuest  = max(0, guestQuantity - event.freeGuestTickets)
+
+memberAmount = paidMember × event.memberTicketPrice
+guestAmount  = paidGuest × event.guestTicketPrice
+totalAmount  = memberAmount + guestAmount
 ```
 
-**Example:** Event has `freeTicketsPerRegistration = 1`, `ticketPrice = ₹1000`.
-- Member books 3 tickets → `paidTickets = 3 - 1 = 2` → `totalAmount = ₹2000`
+**Example:** Event has `freeMemberTickets = 1, memberTicketPrice = ₹1000` and `freeGuestTickets = 0, guestTicketPrice = ₹1500`.
+- Member books 2 member tickets and 1 guest ticket.
+- `paidMember = 2 - 1 = 1` → `memberAmount = ₹1000`
+- `paidGuest = 1 - 0 = 1` → `guestAmount = ₹1500`
+- `totalAmount = ₹1000 + ₹1500 = ₹2500`
 
 ---
 

@@ -199,7 +199,6 @@ public class RegistrationService {
                 .eventId(event.getId())
                 .memberQuantity(memberQty)
                 .guestQuantity(guestQty)
-                .paymentPreference(request.getPaymentPreference())
                 .build();
         redisTemplate.opsForValue().set(INTENT_PREFIX + request.getSessionToken(), intent, INTENT_TTL);
 
@@ -220,15 +219,12 @@ public class RegistrationService {
      *
      * The grand finale of the booking flow.
      * Verifies the OTP, calculates the price, and finalizes the booking in Postgres
-     * via one of three paths:
+     * via one of two paths:
      *
      *  PATH A — Free event (totalAmount == 0)
      *           → Registration saved with status FREE. Ticket returned immediately.
      *
-     *  PATH B — Pay at Gate (paymentPreference == AT_GATE)
-     *           → Registration saved with status PAY_AT_GATE. Ticket returned immediately.
-     *
-     *  PATH C — Online Payment (paymentPreference == ONLINE && totalAmount > 0)
+     *  PATH C — Online Payment (totalAmount > 0)
      *           → Razorpay order created. Registration saved as PENDING.
      *             razorpayOrderId returned so the frontend can open the payment popup.
      */
@@ -348,7 +344,7 @@ public class RegistrationService {
             registration.setGuestQuantity(guestQuantity);
             registration.setTotalAmount(BigDecimal.ZERO);
             registration.setPaymentStatus(PaymentStatus.FREE);
-            registration.setPaymentPreference(intent.getPaymentPreference());
+            registration.setPaymentPreference(PaymentPreference.ONLINE); // always online for member self-service
             registration.setTicketReference(ticketReference);
             registration.setRazorpayOrderId(null);
             registration.setRazorpayPaymentId(null);
@@ -362,37 +358,6 @@ public class RegistrationService {
                     .quantity(quantity)
                     .totalAmount(BigDecimal.ZERO)
                     .paymentStatus(PaymentStatus.FREE)
-                    .build();
-        }
-
-        // PATH B: Pay at the Gate
-        if (intent.getPaymentPreference() == PaymentPreference.AT_GATE) {
-            log.info("[BOOKING] PATH B (PAY_AT_GATE) — member={}, event={}, mQty={}, gQty={}, amount={}",
-                    session.getMemberId(), event.getId(), memberQuantity, guestQuantity, totalAmount);
-
-            registration.setQuantity(quantity);
-            registration.setMemberQuantity(memberQuantity);
-            registration.setGuestQuantity(guestQuantity);
-            registration.setTotalAmount(totalAmount);
-            registration.setPaymentStatus(PaymentStatus.PAY_AT_GATE);
-            registration.setPaymentPreference(intent.getPaymentPreference());
-            registration.setTicketReference(ticketReference);
-            registration.setRazorpayOrderId(null);
-            registration.setRazorpayPaymentId(null);
-
-            registrationRepository.save(registration);
-            cleanUpRedis(request.getSessionToken());
-
-            return RegistrationResponse.builder()
-                    .ticketReference(ticketReference)
-                    .eventTitle(event.getTitle())
-                    .memberQuantity(memberQuantity)
-                    .guestQuantity(guestQuantity)
-                    .quantity(quantity)
-                    .memberAmount(memberAmount)
-                    .guestAmount(guestAmount)
-                    .totalAmount(totalAmount)
-                    .paymentStatus(PaymentStatus.PAY_AT_GATE)
                     .build();
         }
 
@@ -413,7 +378,7 @@ public class RegistrationService {
         registration.setGuestQuantity(guestQuantity);
         registration.setTotalAmount(totalAmount);
         registration.setPaymentStatus(PaymentStatus.PENDING);
-        registration.setPaymentPreference(intent.getPaymentPreference());
+        registration.setPaymentPreference(PaymentPreference.ONLINE); // always online for member self-service
         registration.setRazorpayOrderId(razorpayOrderId);
         registration.setTicketReference(ticketReference);
         registration.setRazorpayPaymentId(null); // reset any previous failed payment ID
