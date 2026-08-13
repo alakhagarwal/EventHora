@@ -19,6 +19,11 @@ import java.util.UUID;
  *   - createdBy (internal audit)
  *   - status (always PUBLISHED for this endpoint)
  *
+ * Includes both ticket tiers so the booking form can show:
+ *   - How many member tickets they can book and what each costs
+ *   - How many guest tickets they can bring and what each costs
+ *   - How many free tickets apply per tier
+ *
  * Maps to:
  *   GET /api/events            (public listing)
  *   GET /api/events/{link}     (public detail / booking page)
@@ -33,36 +38,51 @@ public class PublicEventResponse {
     private EventCategory category;
     private String bannerUrl;
 
-    // Schedule
+    // ─── Schedule ─────────────────────────────────────────────────────────────
+
     private LocalDate eventDate;
     private LocalTime startTime;
     private LocalTime endTime;
     private LocalDateTime registrationDeadline;
 
-    // Venue
+    // ─── Venue ────────────────────────────────────────────────────────────────
+
     private String venue;
     private String additionalVenueInfo;
 
-    // Ticket info — same price for everyone in the booking
-    private int maxTicketsPerMember;              // Total tickets a member can book (themselves + anyone with them)
-    private int freeTicketsPerRegistration;       // How many of those are free
-    private BigDecimal ticketPrice;               // Price per paid ticket (0.00 for free events)
+    // ─── Member Ticket Tier ───────────────────────────────────────────────────
 
-    // Rules
-    private Integer minimumAge;                   // "Minimum Age: 18+"
+    private int maxMemberTickets;                 // Max member-tier seats per booking (min 1)
+    private int freeMemberTickets;                // How many member tickets are free per booking
+    private BigDecimal memberTicketPrice;          // Price per paid member ticket (0.00 = free)
 
-    // Notes shown on event page (bullet points from the invite)
+    // ─── Guest Ticket Tier ────────────────────────────────────────────────────
+
+    private int maxGuestTickets;                  // Max guest seats per booking (0 = no guests)
+    private int freeGuestTickets;                 // How many guest tickets are free per booking
+    private BigDecimal guestTicketPrice;           // Price per paid guest ticket
+
+    // ─── Event Rules ──────────────────────────────────────────────────────────
+
+    private Integer minimumAge;
+
+    // ─── Notes & Contact ──────────────────────────────────────────────────────
+
     private List<String> importantNotes;
-
-    // Contact
     private String contactPersonName;
     private String contactPersonPhone;
 
-    // Capacity
-    private int totalCapacity;                    // Maximum total tickets for the event
+    // ─── Media Gallery ────────────────────────────────────────────────────────
+
+    private List<EventMediaDto> media;            // Ordered by sortOrder ASC; photos are presigned
+
+    // ─── Capacity ─────────────────────────────────────────────────────────────
+
+    private int totalCapacity;
     private int availableCount;                   // Remaining seats (totalCapacity - lockedTickets)
 
-    // Registration
+    // ─── Registration ─────────────────────────────────────────────────────────
+
     private String uniqueEventLink;
     private boolean registrationOpen;             // false when deadline has passed or event is full
     private boolean isSoldOut;                    // true when booked tickets >= total capacity

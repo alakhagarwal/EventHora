@@ -24,6 +24,7 @@ public class EventSummaryResponse {
     private String title;
     private EventCategory category;
     private String bannerUrl;
+    private String thumbnailUrl;              // First PHOTO from media gallery (presigned); null if no gallery
     private LocalDate eventDate;
     private LocalTime startTime;
     private String venue;

@@ -1,11 +1,13 @@
 package com.eventHora.backend.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -16,20 +18,21 @@ import java.util.List;
  * This ensures CORS headers are set before Spring Security processes the
  * request, meaning OPTIONS preflight requests are handled correctly.
  *
- * Allowed origins:
- *   http://localhost:5173   → Vite (React dev server)
- *   http://localhost:4173   → Vite preview build
- *   http://localhost:3000   → Next.js / CRA
+ * Allowed origins are driven by the cors.allowed-origins property, which is
+ * set via the CORS_ALLOWED_ORIGINS environment variable on production (Render).
+ * Multiple origins are comma-separated, e.g.:
+ *   CORS_ALLOWED_ORIGINS=https://eventhora.vercel.app,https://custom-domain.com
+ *
+ * Defaults (local dev):
+ *   http://localhost:3000  → Next.js
+ *   http://localhost:5173  → Vite (React)
+ *   http://localhost:4173  → Vite preview build
  */
 @Configuration
 public class CorsConfig {
 
-    private static final List<String> ALLOWED_ORIGINS = List.of(
-            "http://localhost:5173",      // Vite (React)
-            "http://localhost:4173",      // Vite preview
-            "http://localhost:3000",      // Next.js / CRA
-            "http://10.27.156.61:3000"    // Frontend on LAN
-    );
+    @Value("${cors.allowed-origins:http://localhost:3000,http://localhost:5173,http://localhost:4173,http://10.27.156.61:3000}")
+    private String allowedOriginsRaw;
 
     private static final List<String> ALLOWED_METHODS = List.of(
             "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"
@@ -47,7 +50,9 @@ public class CorsConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
 
-        config.setAllowedOrigins(ALLOWED_ORIGINS);
+        // Split comma-separated origins from the env var / property
+        List<String> allowedOrigins = Arrays.asList(allowedOriginsRaw.split(","));
+        config.setAllowedOrigins(allowedOrigins);
         config.setAllowedMethods(ALLOWED_METHODS);
         config.setAllowedHeaders(ALLOWED_HEADERS);
 

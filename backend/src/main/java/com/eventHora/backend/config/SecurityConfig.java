@@ -37,7 +37,8 @@ public class SecurityConfig {
     private static final String[] PUBLIC_URLS = {
             "/api/auth/login",
             "/api/registration/**",
-            "/api/webhooks/**"   // Razorpay posts here — secured by HMAC-SHA256 signature, not JWT
+            "/api/webhooks/**",  // Razorpay posts here — secured by HMAC-SHA256 signature, not JWT
+            "/api/health"        // UptimeRobot liveness ping — no auth needed
     };
 
     @Bean

@@ -27,6 +27,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.razorpay.RazorpayException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.stereotype.Service;
@@ -63,6 +64,13 @@ public class RegistrationService {
 
     // ─── OTP Expiry in seconds (returned to frontend for countdown timer) ─────
     private static final int OTP_TTL_SECONDS = 300;
+
+    // ─── Demo Mode ────────────────────────────────────────────────────────────
+    // When true, OTP "123456" is always accepted so portfolio visitors can test
+    // the full booking flow without access to the backend server logs.
+    // Controlled by the DEMO_MODE environment variable (default: false).
+    @Value("${demo.mode:false}")
+    private boolean demoMode;
 
     // ─── Endpoint 1: Verify Member ────────────────────────────────────────────
 
@@ -137,17 +145,28 @@ public class RegistrationService {
             throw new IllegalArgumentException("The registration deadline for this event has passed.");
         }
 
-        // 5. Quantity must not exceed the event's per-member limit
-        if (request.getQuantity() > event.getMaxTicketsPerMember()) {
+        // 5. Validate member and guest quantities against event limits
+        int memberQty = request.getMemberQuantity();
+        int guestQty  = request.getGuestQuantity();
+        int totalQty  = memberQty + guestQty;
+
+        if (memberQty > event.getMaxMemberTickets()) {
             throw new IllegalArgumentException(
-                "You can book a maximum of " + event.getMaxTicketsPerMember() + " tickets for this event."
+                "You can book a maximum of " + event.getMaxMemberTickets() + " member tickets for this event."
+            );
+        }
+        if (guestQty > event.getMaxGuestTickets()) {
+            throw new IllegalArgumentException(
+                event.getMaxGuestTickets() == 0
+                    ? "This event does not allow guest tickets."
+                    : "You can bring a maximum of " + event.getMaxGuestTickets() + " guest(s) for this event."
             );
         }
 
         // 6. Capacity check — count all locked (non-PENDING, non-FAILED) tickets
         int lockedTickets = registrationRepository.sumLockedTicketsForEvent(event.getId());
         int remaining = event.getTotalCapacity() - lockedTickets;
-        if (request.getQuantity() > remaining) {
+        if (totalQty > remaining) {
             throw new IllegalArgumentException(
                 "Not enough seats available. Only " + remaining + " seat(s) remain."
             );
@@ -178,7 +197,8 @@ public class RegistrationService {
 
         BookingIntent intent = BookingIntent.builder()
                 .eventId(event.getId())
-                .quantity(request.getQuantity())
+                .memberQuantity(memberQty)
+                .guestQuantity(guestQty)
                 .paymentPreference(request.getPaymentPreference())
                 .build();
         redisTemplate.opsForValue().set(INTENT_PREFIX + request.getSessionToken(), intent, INTENT_TTL);
@@ -220,10 +240,21 @@ public class RegistrationService {
         Object storedOtp = redisTemplate.opsForValue().get(otpKey);
 
         if (storedOtp == null) {
-            throw new BadCredentialsException("OTP has expired. Please restart the booking process.");
-        }
-        if (!storedOtp.toString().equals(request.getOtp())) {
-            throw new BadCredentialsException("Incorrect OTP. Please try again.");
+            // In demo mode, allow the universal demo OTP even if Redis entry expired
+            if (demoMode && "123456".equals(request.getOtp())) {
+                log.info("[DEMO-MODE] Universal demo OTP accepted for session {}", request.getSessionToken());
+            } else {
+                throw new BadCredentialsException("OTP has expired. Please restart the booking process.");
+            }
+        } else {
+            // Demo mode: accept "123456" OR the real stored OTP
+            boolean isDemoOtp = demoMode && "123456".equals(request.getOtp());
+            if (!isDemoOtp && !storedOtp.toString().equals(request.getOtp())) {
+                throw new BadCredentialsException("Incorrect OTP. Please try again.");
+            }
+            if (isDemoOtp) {
+                log.info("[DEMO-MODE] Universal demo OTP accepted for session {}", request.getSessionToken());
+            }
         }
 
         // ── Step 2: Retrieve the locked BookingIntent from Redis ───────────────
@@ -249,14 +280,18 @@ public class RegistrationService {
             throw new IllegalArgumentException("The registration deadline for this event has passed.");
         }
 
-        // ── Step 5: Calculate Price ────────────────────────────────────────────
-        int quantity        = intent.getQuantity();
-        int freeTickets     = event.getFreeTicketsPerRegistration();
-        int paidTickets     = Math.max(0, quantity - freeTickets);
-        BigDecimal totalAmount = event.getTicketPrice()
-                .multiply(BigDecimal.valueOf(paidTickets));
+        // ── Step 5: Calculate Price — dual-tier ──────────────────────────────
+        int memberQuantity = intent.getMemberQuantity();
+        int guestQuantity  = intent.getGuestQuantity();
+        int quantity       = memberQuantity + guestQuantity;   // total for capacity check
 
-        // ── Step 6: Generate Ticket Reference ─────────────────────────────────
+        int paidMemberTickets = Math.max(0, memberQuantity - event.getFreeMemberTickets());
+        int paidGuestTickets  = Math.max(0, guestQuantity  - event.getFreeGuestTickets());
+        BigDecimal memberAmount = event.getMemberTicketPrice().multiply(BigDecimal.valueOf(paidMemberTickets));
+        BigDecimal guestAmount  = event.getGuestTicketPrice().multiply(BigDecimal.valueOf(paidGuestTickets));
+        BigDecimal totalAmount  = memberAmount.add(guestAmount);
+
+        // ── Step 6: Generate Ticket Reference ────────────────────────────────
         String ticketReference = generateTicketReference();
 
         // ── Step 7: Resolve Registration — reuse FAILED row or create fresh ────
@@ -292,14 +327,9 @@ public class RegistrationService {
             registration.setEvent(event);
         }
 
-        // ── Step 5.5: Re-check Capacity (Bug 3 fix) ──────────────────────────────
+        // ── Step 5.5: Re-check Capacity (race condition guard) ──────────────
         // Between /initiate (where capacity was first checked) and now, up to 10 minutes
         // may have elapsed. Other members may have taken remaining seats.
-        // Paths A (FREE) and B (PAY_AT_GATE) lock seats immediately on save,
-        // so we MUST verify capacity again right here before we write to the database.
-        // Note: for Path C (PENDING), this guard still applies — even though PENDING
-        // itself doesn't lock a seat, we should not issue a Razorpay order if the
-        // event is already known to be sold out at this moment.
         int lockedNow = registrationRepository.sumLockedTicketsForEvent(event.getId());
         int remainingNow = event.getTotalCapacity() - lockedNow;
         if (quantity > remainingNow) {
@@ -308,12 +338,14 @@ public class RegistrationService {
                     + " seat(s) remain — please adjust your quantity or try another event.");
         }
 
-        // ── Step 8: Three-Way Split ────────────────────────────────────────────
+        // ── Step 8: Three-Way Split ────────────────────────────────────────────────
         if (totalAmount.compareTo(BigDecimal.ZERO) == 0) {
-            log.info("[BOOKING] PATH A (FREE) — member={}, event={}, qty={}",
-                    session.getMemberId(), event.getId(), quantity);
+            log.info("[BOOKING] PATH A (FREE) — member={}, event={}, mQty={}, gQty={}",
+                    session.getMemberId(), event.getId(), memberQuantity, guestQuantity);
 
             registration.setQuantity(quantity);
+            registration.setMemberQuantity(memberQuantity);
+            registration.setGuestQuantity(guestQuantity);
             registration.setTotalAmount(BigDecimal.ZERO);
             registration.setPaymentStatus(PaymentStatus.FREE);
             registration.setPaymentPreference(intent.getPaymentPreference());
@@ -335,10 +367,12 @@ public class RegistrationService {
 
         // PATH B: Pay at the Gate
         if (intent.getPaymentPreference() == PaymentPreference.AT_GATE) {
-            log.info("[BOOKING] PATH B (PAY_AT_GATE) — member={}, event={}, qty={}, amount={}",
-                    session.getMemberId(), event.getId(), quantity, totalAmount);
+            log.info("[BOOKING] PATH B (PAY_AT_GATE) — member={}, event={}, mQty={}, gQty={}, amount={}",
+                    session.getMemberId(), event.getId(), memberQuantity, guestQuantity, totalAmount);
 
             registration.setQuantity(quantity);
+            registration.setMemberQuantity(memberQuantity);
+            registration.setGuestQuantity(guestQuantity);
             registration.setTotalAmount(totalAmount);
             registration.setPaymentStatus(PaymentStatus.PAY_AT_GATE);
             registration.setPaymentPreference(intent.getPaymentPreference());
@@ -352,15 +386,19 @@ public class RegistrationService {
             return RegistrationResponse.builder()
                     .ticketReference(ticketReference)
                     .eventTitle(event.getTitle())
+                    .memberQuantity(memberQuantity)
+                    .guestQuantity(guestQuantity)
                     .quantity(quantity)
+                    .memberAmount(memberAmount)
+                    .guestAmount(guestAmount)
                     .totalAmount(totalAmount)
                     .paymentStatus(PaymentStatus.PAY_AT_GATE)
                     .build();
         }
 
         // PATH C: Online Payment via Razorpay
-        log.info("[BOOKING] PATH C (ONLINE) — member={}, event={}, qty={}, amount={}",
-                session.getMemberId(), event.getId(), quantity, totalAmount);
+        log.info("[BOOKING] PATH C (ONLINE) — member={}, event={}, mQty={}, gQty={}, amount={}",
+                session.getMemberId(), event.getId(), memberQuantity, guestQuantity, totalAmount);
 
         String razorpayOrderId;
         try {
@@ -371,6 +409,8 @@ public class RegistrationService {
         }
 
         registration.setQuantity(quantity);
+        registration.setMemberQuantity(memberQuantity);
+        registration.setGuestQuantity(guestQuantity);
         registration.setTotalAmount(totalAmount);
         registration.setPaymentStatus(PaymentStatus.PENDING);
         registration.setPaymentPreference(intent.getPaymentPreference());
@@ -384,7 +424,11 @@ public class RegistrationService {
         return RegistrationResponse.builder()
                 .ticketReference(ticketReference)
                 .eventTitle(event.getTitle())
+                .memberQuantity(memberQuantity)
+                .guestQuantity(guestQuantity)
                 .quantity(quantity)
+                .memberAmount(memberAmount)
+                .guestAmount(guestAmount)
                 .totalAmount(totalAmount)
                 .paymentStatus(PaymentStatus.PENDING)
                 .razorpayOrderId(razorpayOrderId)

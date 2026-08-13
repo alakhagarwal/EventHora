@@ -57,7 +57,14 @@ public class Registration {
     private Event event;                   // The event being booked
 
     @Column(nullable = false)
-    private int quantity;                  // Number of tickets booked (1 to maxTicketsPerMember)
+    private int quantity;                  // Total tickets booked = memberQuantity + guestQuantity
+
+    @Column(nullable = false)
+    private int memberQuantity;            // RIC-member tier tickets in this booking
+
+    @Column(nullable = false)
+    private int guestQuantity;             // Guest (non-member) tier tickets in this booking
+
 
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal totalAmount;        // Final amount charged: paidTickets * ticketPrice

@@ -33,15 +33,7 @@ function formatAmount(amount: string) {
   return `₹${num.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export default function AdminBookingSuccessPage() {
-  return (
-    <Suspense fallback={<div className="mx-auto max-w-3xl px-6 py-16 text-navy/60">Loading...</div>}>
-      <AdminBookingSuccess />
-    </Suspense>
-  );
-}
-
-function AdminBookingSuccess() {
+function AdminBookingSuccessContent() {
   const router = useRouter();
   const params = useSearchParams();
 
@@ -205,5 +197,13 @@ function AdminBookingSuccess() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AdminBookingSuccess() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-navy/70">Loading ticket details...</div>}>
+      <AdminBookingSuccessContent />
+    </Suspense>
   );
 }

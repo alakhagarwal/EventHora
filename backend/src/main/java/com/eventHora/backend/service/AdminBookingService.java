@@ -53,15 +53,15 @@ public class AdminBookingService {
      * The calling admin's email is passed in as `bookedByEmail` (extracted
      * from the JWT by the controller via @AuthenticationPrincipal).
      *
-     * Payment path is determined by the event's ticketPrice:
+     * Payment path — dual-tier pricing:
      *
-     *   ticketPrice == 0 (free event)
+     *   totalAmount == 0 (both tiers free after free-ticket quotas)
      *     → paymentStatus = FREE, totalAmount = 0.00  (action is ignored)
      *
-     *   ticketPrice > 0 and action = PAY_AT_GATE
-     *     → paymentStatus = PAY_AT_GATE, totalAmount = paidTickets × ticketPrice
+     *   totalAmount > 0 and action = PAY_AT_GATE
+     *     → paymentStatus = PAY_AT_GATE
      *
-     *   ticketPrice > 0 and action = COMPLIMENTARY
+     *   totalAmount > 0 and action = COMPLIMENTARY
      *     → paymentStatus = COMPLIMENTARY, totalAmount = 0.00
      */
     @Transactional
@@ -91,17 +91,26 @@ public class AdminBookingService {
                     "The registration deadline for '" + event.getTitle() + "' has passed.");
         }
 
-        // ── Step 3: Validate quantity ──────────────────────────────────────────
-        if (request.getQuantity() > event.getMaxTicketsPerMember()) {
+        // ── Step 3: Validate quantities ────────────────────────────────────────
+        int memberQuantity = request.getMemberQuantity();
+        int guestQuantity  = request.getGuestQuantity();
+        int totalQuantity  = memberQuantity + guestQuantity;
+
+        if (memberQuantity > event.getMaxMemberTickets()) {
             throw new IllegalArgumentException(
-                    "Maximum tickets per member for this event is " +
-                    event.getMaxTicketsPerMember() + ". Requested: " + request.getQuantity() + ".");
+                    "Maximum member tickets for this event is " +
+                    event.getMaxMemberTickets() + ". Requested: " + memberQuantity + ".");
+        }
+        if (guestQuantity > event.getMaxGuestTickets()) {
+            throw new IllegalArgumentException(
+                    "Maximum guest tickets for this event is " +
+                    event.getMaxGuestTickets() + ". Requested: " + guestQuantity + ".");
         }
 
         // ── Step 4: Capacity check ─────────────────────────────────────────────
         int lockedTickets = registrationRepository.sumLockedTicketsForEvent(event.getId());
         int remaining     = event.getTotalCapacity() - lockedTickets;
-        if (request.getQuantity() > remaining) {
+        if (totalQuantity > remaining) {
             throw new IllegalArgumentException(
                     "Not enough seats available for '" + event.getTitle() +
                     "'. Only " + remaining + " seat(s) remain.");
@@ -121,12 +130,12 @@ public class AdminBookingService {
                     "'. Check the registrations list before creating a new one.");
         }
 
-        // ── Step 6: Calculate price ────────────────────────────────────────────
-        int quantity    = request.getQuantity();
-        int freeTickets = event.getFreeTicketsPerRegistration();
-        int paidTickets = Math.max(0, quantity - freeTickets);
-        BigDecimal calculatedAmount = event.getTicketPrice()
-                .multiply(BigDecimal.valueOf(paidTickets));
+        // ── Step 6: Calculate price — dual-tier ───────────────────────────────
+        int paidMemberTickets = Math.max(0, memberQuantity - event.getFreeMemberTickets());
+        int paidGuestTickets  = Math.max(0, guestQuantity  - event.getFreeGuestTickets());
+        BigDecimal memberAmount = event.getMemberTicketPrice().multiply(BigDecimal.valueOf(paidMemberTickets));
+        BigDecimal guestAmount  = event.getGuestTicketPrice().multiply(BigDecimal.valueOf(paidGuestTickets));
+        BigDecimal calculatedAmount = memberAmount.add(guestAmount);
 
         // ── Step 7: Determine payment path ────────────────────────────────────
         final PaymentStatus paymentStatus;
@@ -138,22 +147,22 @@ public class AdminBookingService {
             // Free event — action is irrelevant
             paymentStatus = PaymentStatus.FREE;
             totalAmount   = BigDecimal.ZERO;
-            log.info("[ADMIN-BOOKING] PATH FREE — bookedBy={}, member={}, event='{}', qty={}",
-                    bookedByEmail, request.getMemberId(), event.getTitle(), quantity);
+            log.info("[ADMIN-BOOKING] PATH FREE — bookedBy={}, member={}, event='{}', mQty={}, gQty={}",
+                    bookedByEmail, request.getMemberId(), event.getTitle(), memberQuantity, guestQuantity);
 
         } else if (request.getAction() == AdminBookingAction.COMPLIMENTARY) {
             // Admin is waiving the fee
             paymentStatus = PaymentStatus.COMPLIMENTARY;
             totalAmount   = BigDecimal.ZERO;
-            log.info("[ADMIN-BOOKING] PATH COMPLIMENTARY — bookedBy={}, member={}, event='{}', qty={}, waived={}",
-                    bookedByEmail, request.getMemberId(), event.getTitle(), quantity, calculatedAmount);
+            log.info("[ADMIN-BOOKING] PATH COMPLIMENTARY — bookedBy={}, member={}, event='{}', mQty={}, gQty={}, waived={}",
+                    bookedByEmail, request.getMemberId(), event.getTitle(), memberQuantity, guestQuantity, calculatedAmount);
 
         } else {
-            // action == PAY_AT_GATE (the only remaining option)
+            // action == PAY_AT_GATE
             paymentStatus = PaymentStatus.PAY_AT_GATE;
             totalAmount   = calculatedAmount;
-            log.info("[ADMIN-BOOKING] PATH PAY_AT_GATE — bookedBy={}, member={}, event='{}', qty={}, amount={}",
-                    bookedByEmail, request.getMemberId(), event.getTitle(), quantity, totalAmount);
+            log.info("[ADMIN-BOOKING] PATH PAY_AT_GATE — bookedBy={}, member={}, event='{}', mQty={}, gQty={}, amount={}",
+                    bookedByEmail, request.getMemberId(), event.getTitle(), memberQuantity, guestQuantity, totalAmount);
         }
 
         // ── Step 8: Generate ticket reference ─────────────────────────────────
@@ -166,7 +175,9 @@ public class AdminBookingService {
                 .memberId(request.getMemberId())
                 .memberType(request.getMemberType())
                 .event(event)
-                .quantity(quantity)
+                .quantity(totalQuantity)
+                .memberQuantity(memberQuantity)
+                .guestQuantity(guestQuantity)
                 .totalAmount(totalAmount)
                 .paymentStatus(paymentStatus)
                 .paymentPreference(PaymentPreference.AT_GATE) // admin bookings are always offline
@@ -184,7 +195,7 @@ public class AdminBookingService {
         // ── Step 10: Return response ───────────────────────────────────────────
         return AdminBookingResponse.builder()
                 .ticketReference(ticketReference)
-                .quantity(quantity)
+                .quantity(totalQuantity)
                 .totalAmount(totalAmount)
                 .paymentStatus(paymentStatus)
                 .memberId(request.getMemberId())
