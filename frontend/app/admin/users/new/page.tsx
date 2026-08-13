@@ -1,17 +1,20 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { getSession } from "@/lib/auth";
+import { useRequireAuth } from "@/lib/useRequireAuth";
 import { toast } from "@/lib/toast";
 
+const ADMIN_ONLY = ["ADMIN"] as const;
+
 export default function NewUser() {
+  const session = useRequireAuth(ADMIN_ONLY);
   const router = useRouter();
   const [form, setForm] = useState({ name: "", email: "", password: "", role: "STAFF" as "ADMIN" | "STAFF" });
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { const s = getSession(); if (!s || s.role !== "ADMIN") router.push("/login"); }, [router]);
+  if (!session) return null;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setErr(null); setBusy(true);

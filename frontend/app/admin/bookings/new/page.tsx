@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Minus, Plus, Search, ChevronDown, CheckCircle2 } from "lucide-react";
+import { Minus, Plus, Search, ChevronDown, CheckCircle2, Wallet, Gift } from "lucide-react";
 import { api } from "@/lib/api";
-import { getSession } from "@/lib/auth";
+import { useRequireAuth } from "@/lib/useRequireAuth";
 import { toast } from "@/lib/toast";
+
+const STAFF_OR_ADMIN = ["ADMIN", "STAFF"] as const;
 
 type PublishedEvent = {
   id: string;
@@ -42,12 +44,13 @@ function formatAmount(amount: number) {
 }
 
 export default function AdminDirectBookingPage() {
+  const session = useRequireAuth(STAFF_OR_ADMIN);
   const router = useRouter();
   const [events, setEvents] = useState<PublishedEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [authReady, setAuthReady] = useState(false);
+  const [action, setAction] = useState<"PAY_AT_GATE" | "CONFIRMED" | "COMPLIMENTARY">("CONFIRMED");
   const [mobileNumber, setMobileNumber] = useState("");
   const [form, setForm] = useState<{
     eventId: string;
@@ -66,14 +69,10 @@ export default function AdminDirectBookingPage() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [highlightIdx, setHighlightIdx] = useState(-1);
 
+  const role = session?.role ?? null;
+
   useEffect(() => {
-    const session = getSession();
-    if (!session || (session.role !== "ADMIN" && session.role !== "STAFF")) {
-      router.replace("/login");
-      setAuthReady(true);
-      return;
-    }
-    setAuthReady(true);
+    if (!session) return;
     setLoading(true);
     api.adminEvents()
       .then(async (data) => {
@@ -105,7 +104,7 @@ export default function AdminDirectBookingPage() {
         setEvents([]);
       })
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [router, session]);
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -130,6 +129,12 @@ export default function AdminDirectBookingPage() {
       quantity: Math.min(current.quantity || 1, max),
     }));
   }, [selectedEvent]);
+
+  useEffect(() => {
+    if (role === "STAFF" && action === "COMPLIMENTARY") {
+      setAction("CONFIRMED");
+    }
+  }, [role, action]);
 
   const filteredEvents = useMemo(() => {
     if (!searchQuery.trim()) return events;
@@ -204,7 +209,7 @@ export default function AdminDirectBookingPage() {
         memberType: form.memberType,
         eventId: selectedEvent.id,
         quantity: form.quantity,
-        action: "COMPLIMENTARY",
+        action,
         mobileNumber: mobileNumber || undefined,
       });
       toast.success(`Member registered: ${response.ticketReference}`);
@@ -239,8 +244,8 @@ export default function AdminDirectBookingPage() {
     }
   };
 
-  if (!authReady) {
-    return <div className="mx-auto max-w-4xl px-4 py-12 text-navy/60">Loading...</div>;
+  if (!session) {
+    return null;
   }
 
   return (
@@ -368,11 +373,42 @@ export default function AdminDirectBookingPage() {
 
           {/* Action */}
           {!isFreeEvent && (
-            <div className="flex items-center gap-2 text-sm text-navy/70">
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <span>
-                This booking will be marked <strong>Payment Verified</strong> — payment already collected.
-              </span>
+            <div>
+              <label className="label">Payment Action</label>
+              <div className="grid gap-3 md:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => setAction("PAY_AT_GATE")}
+                  className={`card flex flex-col items-start gap-1 p-3 text-left transition-colors ${action === "PAY_AT_GATE" ? "border-navy ring-2 ring-navy/20" : "hover:border-navy/30"}`}
+                >
+                  <span className="flex items-center gap-2 text-sm font-semibold text-navy">
+                    <Wallet className="h-4 w-4" /> Pay at Gate
+                  </span>
+                  <span className="text-xs text-navy/60">Member pays cash/card at the venue</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAction("CONFIRMED")}
+                  className={`card flex flex-col items-start gap-1 p-3 text-left transition-colors ${action === "CONFIRMED" ? "border-navy ring-2 ring-navy/20" : "hover:border-navy/30"}`}
+                >
+                  <span className="flex items-center gap-2 text-sm font-semibold text-navy">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" /> Payment Verified
+                  </span>
+                  <span className="text-xs text-navy/60">Payment already collected</span>
+                </button>
+                {role === "ADMIN" && (
+                  <button
+                    type="button"
+                    onClick={() => setAction("COMPLIMENTARY")}
+                    className={`card flex flex-col items-start gap-1 p-3 text-left transition-colors ${action === "COMPLIMENTARY" ? "border-navy ring-2 ring-navy/20" : "hover:border-navy/30"}`}
+                  >
+                    <span className="flex items-center gap-2 text-sm font-semibold text-navy">
+                      <Gift className="h-4 w-4" /> Complimentary
+                    </span>
+                    <span className="text-xs text-navy/60">Fee waived — \u20b90.00</span>
+                  </button>
+                )}
+              </div>
             </div>
           )}
 

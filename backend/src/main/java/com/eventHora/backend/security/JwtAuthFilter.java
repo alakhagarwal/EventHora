@@ -1,6 +1,8 @@
 package com.eventHora.backend.security;
 
 import com.eventHora.backend.repository.SystemUserRepository;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -39,22 +41,37 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String token = extractTokenFromRequest(request);
 
         if (token != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            String email = jwtProvider.extractEmail(token);
+            try {
+                String email = jwtProvider.extractEmail(token);
 
-            if (email != null) {
-                UserDetails userDetails = userRepository.findByEmail(email).orElse(null);
-                if (userDetails != null && jwtProvider.isTokenValid(token, email)) {
-                    UsernamePasswordAuthenticationToken auth =
-                            new UsernamePasswordAuthenticationToken(
-                                    userDetails, null, userDetails.getAuthorities()
-                            );
-                    auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    SecurityContextHolder.getContext().setAuthentication(auth);
+                if (email != null) {
+                    UserDetails userDetails = userRepository.findByEmail(email).orElse(null);
+                    if (userDetails != null && jwtProvider.isTokenValid(token, email)) {
+                        UsernamePasswordAuthenticationToken auth =
+                                new UsernamePasswordAuthenticationToken(
+                                        userDetails, null, userDetails.getAuthorities()
+                                );
+                        auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                        SecurityContextHolder.getContext().setAuthentication(auth);
+                    }
                 }
+            } catch (ExpiredJwtException ex) {
+                writeUnauthorized(response, "Session expired. Please log in again.");
+                return;
+            } catch (JwtException | IllegalArgumentException ex) {
+                writeUnauthorized(response, "Invalid or missing authentication token.");
+                return;
             }
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private void writeUnauthorized(HttpServletResponse response, String message) throws IOException {
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        response.getWriter().write("{\"status\":401,\"error\":\"Unauthorized\",\"message\":\"" + message + "\"}");
     }
 
     private String extractTokenFromRequest(HttpServletRequest request) {

@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { clearMemberSession, clearSession, saveSession } from "@/lib/auth";
+import { clearMemberSession, clearSession, saveMemberSession, saveSession } from "@/lib/auth";
 import { toast } from "@/lib/toast";
 
 type Tab = "staff" | "indian" | "overseas";
@@ -81,7 +81,7 @@ function MemberForm({ memberType, onDone }: { memberType: "INDIAN" | "OVERSEAS";
       const res: any = await api.verifyMember({ memberId, identifier, memberType });
       if (res?.sessionToken) {
         clearSession();
-        localStorage.setItem("memberSession", JSON.stringify(res));
+        saveMemberSession(res);
       }
       onDone();
     } catch (e: any) { toast.error(e.message || "Verification failed"); } finally { setBusy(false); }

@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { clearSession, clearMemberSession, getSession, getMemberSession, type Session } from "@/lib/auth";
+import { clearSession, clearMemberSession, getSession, getMemberSession, onAuthChange, type Session } from "@/lib/auth";
 
 /* ── Drawer link icons (small inline SVGs) ── */
 const icons = {
@@ -80,6 +80,8 @@ export default function Navbar() {
   const router = useRouter();
 
   useEffect(() => { setSession(getSession()); setMemberSession(getMemberSession()); }, [pathname]);
+  // React to auth changes (login/logout/token deletion, incl. from other tabs)
+  useEffect(() => onAuthChange(() => { setSession(getSession()); setMemberSession(getMemberSession()); }), []);
   // Close drawer on route change
   useEffect(() => { setDrawerOpen(false); }, [pathname]);
   // Lock body scroll when drawer is open

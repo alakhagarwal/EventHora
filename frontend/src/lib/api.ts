@@ -1,4 +1,5 @@
 import type { CheckInResponse, LookupResponse } from "@/types/staff";
+import { clearSession } from "@/lib/auth";
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
@@ -34,8 +35,7 @@ export async function apiFetch<T = any>(path: string, opts: Options = {}): Promi
   const res = await fetch(`${API_BASE}${path}`, { ...opts, headers, cache: "no-store" });
   if (res.status === 401 || res.status === 403) {
     if (typeof window !== "undefined" && opts.auth !== false) {
-      localStorage.removeItem("accessToken");
-      localStorage.removeItem("session");
+      clearSession();
       if (!window.location.pathname.startsWith("/login")) window.location.href = "/login";
     }
   }

@@ -1,12 +1,16 @@
 "use client";
 import EventForm from "@/components/EventForm";
-import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { useRequireAuth } from "@/lib/useRequireAuth";
+
+const ADMIN_ONLY = ["ADMIN"] as const;
 
 export default function NewEvent() {
+  const session = useRequireAuth(ADMIN_ONLY);
   const router = useRouter();
-  useEffect(() => { const s = getSession(); if (!s || s.role !== "ADMIN") router.push("/login"); }, [router]);
+
+  if (!session) return null;
+
   return (
     <div className="mx-auto max-w-5xl px-3 py-12 md:px-6">
       <div className="eyebrow">Admin</div>

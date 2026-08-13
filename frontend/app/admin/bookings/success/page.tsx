@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import QRCode from "qrcode";
@@ -33,7 +33,15 @@ function formatAmount(amount: string) {
   return `₹${num.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export default function AdminBookingSuccess() {
+export default function AdminBookingSuccessPage() {
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-3xl px-6 py-16 text-navy/60">Loading...</div>}>
+      <AdminBookingSuccess />
+    </Suspense>
+  );
+}
+
+function AdminBookingSuccess() {
   const router = useRouter();
   const params = useSearchParams();
 

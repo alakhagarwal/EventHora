@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getSession, type Session } from "@/lib/auth";
+import { getMemberSession, getSession, onAuthChange, type Session } from "@/lib/auth";
 
 /* ── SVG icon components ── */
 function HomeIcon({ active }: { active: boolean }) {
@@ -111,8 +111,13 @@ export default function MobileBottomNav() {
 
   useEffect(() => {
     setSession(getSession());
-    setHasMemberSession(!!localStorage.getItem("memberSession"));
+    setHasMemberSession(!!getMemberSession());
   }, [pathname]);
+  // React to auth changes (login/logout/token deletion, incl. from other tabs)
+  useEffect(() => onAuthChange(() => {
+    setSession(getSession());
+    setHasMemberSession(!!getMemberSession());
+  }), []);
 
   const items = getNavItems(session, hasMemberSession);
 
