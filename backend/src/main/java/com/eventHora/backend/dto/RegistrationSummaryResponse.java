@@ -28,6 +28,7 @@ public class RegistrationSummaryResponse {
     private String ticketReference;       // e.g. "TKT-2026-AB12CD" — user-facing ticket ID
     private String memberId;              // e.g. "RIC-2024-04512"
     private MemberType memberType;        // INDIAN or OVERSEAS
+    private String memberContact;         // Phone (INDIAN) or email (OVERSEAS); null for member self-service bookings
     private int quantity;                 // Number of tickets booked
     private BigDecimal totalAmount;       // Total amount for this booking
     private PaymentStatus paymentStatus;  // Current status: CONFIRMED, FREE, PAY_AT_GATE, etc.

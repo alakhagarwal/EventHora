@@ -1026,10 +1026,11 @@ POST /api/admin/bookings/register
 {
   "memberId": "RIC-2024-04512",
   "memberType": "INDIAN",
+  "memberContact": "9876543210",
   "eventId": "550e8400-e29b-41d4-a716-446655440000",
   "memberQuantity": 2,
   "guestQuantity": 0,
-  "action": "PAY_AT_GATE"
+  "action": "ONLINE"
 }
 ```
 
@@ -1039,29 +1040,30 @@ POST /api/admin/bookings/register
 |---|---|---|---|
 | `memberId` | String | ✅ | RIC Member ID. Must start with `RIC` (validated against the mock RIC API) |
 | `memberType` | String | ✅ | `INDIAN` or `OVERSEAS` |
+| `memberContact` | String | ✅ | **Phone number** for INDIAN members (10-digit), or **email address** for OVERSEAS members. Used to send the payment link and stored on the registration. |
 | `eventId` | UUID | ✅ | The event to register for |
 | `memberQuantity` | Integer | ✅ | Minimum 1, max = `event.maxMemberTickets` |
 | `guestQuantity` | Integer | ✅ | Minimum 0, max = `event.maxGuestTickets` |
-| `action` | String | ✅ | `PAY_AT_GATE` or `COMPLIMENTARY`. See payment logic below. |
-
-> **No `ONLINE` option.** Admin bookings never go through Razorpay. There are only two choices for paid events.
+| `action` | String | ✅ | `PAY_AT_GATE`, `COMPLIMENTARY`, or `ONLINE`. See payment logic below. |
 
 ---
 
-#### Payment Logic (Automatic — based on `ticketPrice` and `action`)
+#### Payment Logic (Automatic — based on pricing and `action`)
 
-| Event type | `action` sent | Result |
-|---|---|---|
-| Free event (`ticketPrice == 0`) | Ignored | `paymentStatus = FREE`, `totalAmount = 0.00` |
-| Paid event | `PAY_AT_GATE` | `paymentStatus = PAY_AT_GATE`, `totalAmount = paidTickets × ticketPrice` |
-| Paid event | `COMPLIMENTARY` | `paymentStatus = COMPLIMENTARY`, `totalAmount = 0.00` |
+| Event type | `action` sent | Result | `paymentStatus` |
+|---|---|---|---|
+| Free event (amount == 0) | Ignored | Booking confirmed immediately | `FREE` |
+| Paid event | `PAY_AT_GATE` | Seat held; cash/card collected at gate | `PAY_AT_GATE` |
+| Paid event | `COMPLIMENTARY` | Fee waived; `totalAmount = 0.00` | `COMPLIMENTARY` |
+| Paid event | `ONLINE` | Razorpay Payment Link sent to member; seat **IS** held | `LINK_PENDING` |
 
-- **`PAY_AT_GATE`**: The member still owes money. Staff collects cash or card at the venue on event day. This booking will appear in the gate check-in queue and must go through `POST /api/staff/record-payment` to be admitted.
-- **`COMPLIMENTARY`**: The admin has waived the fee. The member can attend for free and will be admitted directly via `POST /api/staff/checkin`.
+- **`PAY_AT_GATE`**: The member still owes money. Staff collects at the venue via `POST /api/staff/record-payment`.
+- **`COMPLIMENTARY`**: The admin has waived the fee. Admitted directly via `POST /api/staff/checkin`.
+- **`ONLINE`**: A Razorpay Payment Link is created and its URL logged to the console (until SMS/email service is integrated). The registration is saved as `LINK_PENDING` — the seat **is held immediately**, unlike the member self-service `PENDING` status. When the member pays, the `payment_link.paid` webhook fires automatically and sets the status to `CONFIRMED`.
 
 ---
 
-**Success Response `200 OK`:**
+**Success Response `200 OK` — PAY_AT_GATE example:**
 ```json
 {
   "ticketReference": "TKT-2026-GH34JK",
@@ -1069,6 +1071,27 @@ POST /api/admin/bookings/register
   "totalAmount": 2000.00,
   "paymentStatus": "PAY_AT_GATE",
   "memberId": "RIC-2024-04512",
+  "memberContact": "9876543210",
+  "paymentLinkUrl": null,
+  "eventTitle": "Mere Mehboob Na Ja…",
+  "eventDate": "2026-07-08",
+  "eventStartTime": "18:30:00",
+  "eventVenue": "Main Audi, RIC",
+  "bookedBy": "admin@ric.org",
+  "bookedAt": "2026-07-24T22:45:00"
+}
+```
+
+**Success Response `200 OK` — ONLINE example:**
+```json
+{
+  "ticketReference": "TKT-2026-MN4P8Q",
+  "quantity": 2,
+  "totalAmount": 2000.00,
+  "paymentStatus": "LINK_PENDING",
+  "memberId": "RIC-2024-04512",
+  "memberContact": "9876543210",
+  "paymentLinkUrl": "https://rzp.io/l/EventHora-TKT-2026-MN4P8Q",
   "eventTitle": "Mere Mehboob Na Ja…",
   "eventDate": "2026-07-08",
   "eventStartTime": "18:30:00",
@@ -1082,11 +1105,13 @@ POST /api/admin/bookings/register
 
 | Field | Type | Notes |
 |---|---|---|
-| `ticketReference` | String | The booking's unique ticket ID — same format as member-self-service bookings |
-| `quantity` | Integer | Total number of tickets booked (`memberQuantity + guestQuantity`) |
-| `totalAmount` | Decimal | `0.00` for FREE or COMPLIMENTARY, calculated price for PAY_AT_GATE |
-| `paymentStatus` | String | `FREE`, `PAY_AT_GATE`, or `COMPLIMENTARY` |
+| `ticketReference` | String | Unique ticket ID |
+| `quantity` | Integer | Total tickets (`memberQuantity + guestQuantity`) |
+| `totalAmount` | Decimal | `0.00` for FREE/COMPLIMENTARY; calculated for PAY_AT_GATE/LINK_PENDING |
+| `paymentStatus` | String | `FREE`, `PAY_AT_GATE`, `COMPLIMENTARY`, or `LINK_PENDING` |
 | `memberId` | String | The member who was registered |
+| `memberContact` | String | Phone (INDIAN) or email (OVERSEAS) stored on the booking |
+| `paymentLinkUrl` | String | Razorpay short URL — **present only for ONLINE action**; `null` for all other actions |
 | `eventTitle` | String | Name of the event |
 | `eventDate` | Date | `YYYY-MM-DD` |
 | `eventStartTime` | Time | `HH:mm:ss` |
@@ -1104,11 +1129,14 @@ POST /api/admin/bookings/register
 | Event exists | `404 Not Found` |
 | Event status is `PUBLISHED` | `400 Bad Request` |
 | Registration deadline not passed | `400 Bad Request` |
-| `quantity` ≤ `maxTicketsPerMember` | `400 Bad Request` |
-| Enough seats available | `400 Bad Request` |
+| `memberQuantity` ≤ `maxMemberTickets` | `400 Bad Request` |
+| `guestQuantity` ≤ `maxGuestTickets` | `400 Bad Request` |
+| Enough seats available (includes `LINK_PENDING` in count) | `400 Bad Request` |
 | No existing registration for this member + event | `409 Conflict` |
 
 > **Duplicate booking note:** Unlike the member self-service flow (which silently overwrites a FAILED row to allow retries), admin bookings **always reject** if any registration already exists for the member + event. The admin should check `GET /api/admin/events/{eventId}/registrations` first if unsure.
+
+> **ONLINE action note:** The `paymentLinkUrl` in the response is the Razorpay Payment Link URL. Until SMS/email delivery is connected, the URL is **also logged to the server console** (search for `[PAYMENT-LINK]` in logs). The admin can copy this URL and share it with the member manually.
 
 ---
 
@@ -1955,6 +1983,11 @@ Razorpay retries webhooks if it does not receive `200 OK` quickly. Every handler
 | `payment.failed` | `PENDING` | Mark FAILED ✅ |
 | `payment.failed` | `FAILED` | Skip — already failed (idempotent) |
 | `payment.failed` | `CONFIRMED` | Skip — **never downgrade a confirmed ticket** |
+| `payment_link.paid` | `LINK_PENDING` | Confirm ticket ✅ (seat was already held) |
+| `payment_link.paid` | `CONFIRMED` | Skip — already confirmed (idempotent) |
+
+> **Note:** `payment_link.paid` must be enabled in the Razorpay dashboard webhook settings alongside `payment.captured` and `payment.failed`.
+
 
 ---
 

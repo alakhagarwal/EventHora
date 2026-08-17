@@ -377,6 +377,7 @@ public class EventService {
                 .ticketReference(r.getTicketReference())
                 .memberId(r.getMemberId())
                 .memberType(r.getMemberType())
+                .memberContact(r.getMemberContact())
                 .quantity(r.getQuantity())
                 .totalAmount(r.getTotalAmount())
                 .paymentStatus(r.getPaymentStatus())

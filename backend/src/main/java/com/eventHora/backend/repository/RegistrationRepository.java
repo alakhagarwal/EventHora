@@ -16,9 +16,12 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
     /**
      * Sums the quantity of all "locked" registrations for a given event.
      *
-     * CONFIRMED, FREE, PAY_AT_GATE and COMPLIMENTARY all hold a real seat.
-     * PENDING is intentionally excluded — an incomplete Razorpay payment
-     * should not block other members from booking.
+     * The following statuses hold a real seat:
+     *   CONFIRMED, FREE, PAY_AT_GATE, COMPLIMENTARY — standard locked statuses
+     *   LINK_PENDING — admin created a Razorpay Payment Link; seat IS held while link is active.
+     *                  This is intentionally different from PENDING (member self-service),
+     *                  where the seat is NOT held until payment is confirmed.
+     * PENDING is excluded — an incomplete member-flow Razorpay payment should not block others.
      * FAILED is excluded — the seat is effectively released.
      */
     @Query(
@@ -26,7 +29,7 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
             SELECT COALESCE(SUM(r.quantity), 0)
             FROM registrations r
             WHERE r.event_id = :eventId
-              AND r.payment_status IN ('CONFIRMED', 'FREE', 'PAY_AT_GATE', 'COMPLIMENTARY')
+              AND r.payment_status IN ('CONFIRMED', 'FREE', 'PAY_AT_GATE', 'COMPLIMENTARY', 'LINK_PENDING')
             """,
         nativeQuery = true
     )
@@ -49,6 +52,12 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
      * Used by the webhook to find a PENDING booking when the frontend fails to call /confirm-payment.
      */
     Optional<Registration> findByRazorpayOrderId(String razorpayOrderId);
+
+    /**
+     * Looks up a registration by the Razorpay Payment Link ID.
+     * Used by the payment_link.paid webhook to confirm a LINK_PENDING admin booking.
+     */
+    Optional<Registration> findByRazorpayPaymentLinkId(String razorpayPaymentLinkId);
 
     // ─── Phase 8A: Member Self-Service (My Bookings) ──────────────────────────
 

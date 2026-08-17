@@ -48,7 +48,11 @@ public class Registration {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private MemberType memberType;         // INDIAN or OVERSEAS — determines OTP channel
+    private MemberType memberType;         // INDIAN or OVERSEAS — determines OTP/contact channel
+
+    @Column
+    private String memberContact;          // phone (INDIAN) or email (OVERSEAS); stored for admin bookings
+                                           // and for sending payment link notifications
 
     // ─── What ─────────────────────────────────────────────────────────────────
 
@@ -83,7 +87,13 @@ public class Registration {
     private String razorpayOrderId;        // Razorpay order ID — null for free/at-gate bookings
 
     @Column
-    private String razorpayPaymentId;      // Razorpay payment ID — set after payment.captured (e.g. "pay_Qx3Rabc...")
+    private String razorpayPaymentId;      // Razorpay payment ID — set after payment.captured
+
+    @Column
+    private String razorpayPaymentLinkId;  // Payment Link ID (e.g. "plink_Abc123") — admin ONLINE path only
+
+    @Column
+    private String razorpayPaymentLinkUrl; // Short URL sent to member — shown in admin booking response
 
     // ─── Gate Check-In ────────────────────────────────────────────────────────
 

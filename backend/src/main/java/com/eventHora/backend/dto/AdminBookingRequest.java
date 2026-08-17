@@ -19,9 +19,17 @@ import java.util.UUID;
  *   - memberQuantity → RIC-member tier seats (min 1)
  *   - guestQuantity  → Guest (non-member) seats (0 is valid)
  *
+ * The `memberContact` field is mandatory and holds the member's contact info:
+ *   - INDIAN   → mobile phone number (10-digit)
+ *   - OVERSEAS → email address
+ * This is used for sending the Razorpay Payment Link when action == ONLINE,
+ * and stored on the registration for future communications.
+ *
  * The `action` field drives the payment path for paid events:
- *   - PAY_AT_GATE    → member still owes money; staff collects at the gate
- *   - COMPLIMENTARY  → fee waived; totalAmount set to 0.00
+ *   - PAY_AT_GATE   → member still owes money; staff collects at the gate
+ *   - COMPLIMENTARY → fee waived; totalAmount set to 0.00
+ *   - ONLINE        → Razorpay Payment Link created and sent to member's phone/email;
+ *                     seat IS held while link is active (LINK_PENDING status)
  *
  * For free events (both prices == 0), `action` is ignored and the booking
  * is automatically set to FREE.
@@ -35,6 +43,9 @@ public class AdminBookingRequest {
     @NotNull(message = "Member type is required")
     private MemberType memberType;     // INDIAN or OVERSEAS
 
+    @NotBlank(message = "Member contact is required")
+    private String memberContact;      // Phone number (INDIAN) or email address (OVERSEAS)
+
     @NotNull(message = "Event ID is required")
     private UUID eventId;
 
@@ -45,5 +56,5 @@ public class AdminBookingRequest {
     private int guestQuantity;         // Guest (non-member) seats (0 = member attending alone)
 
     @NotNull(message = "Action is required")
-    private AdminBookingAction action; // PAY_AT_GATE or COMPLIMENTARY
+    private AdminBookingAction action; // PAY_AT_GATE, COMPLIMENTARY, or ONLINE
 }

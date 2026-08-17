@@ -533,10 +533,10 @@ public class RegistrationService {
      *   anything, so double-processing the same event is completely harmless.
      *
      * EVENTS WE HANDLE:
-     *   - "payment.captured" → mark PENDING registration as CONFIRMED
-     *   - "payment.failed"   → mark PENDING registration as FAILED
-     *   - anything else      → log and ignore (200 OK is still returned to Razorpay
-     *                          so it stops retrying events we don't care about)
+     *   - "payment.captured"  → mark PENDING registration as CONFIRMED (member self-service)
+     *   - "payment.failed"    → mark PENDING registration as FAILED (member self-service)
+     *   - "payment_link.paid" → mark LINK_PENDING registration as CONFIRMED (admin ONLINE path)
+     *   - anything else       → log and ignore (200 OK is still returned to Razorpay)
      *
      * @param rawBody   The raw JSON webhook payload (already signature-verified by controller)
      */
@@ -550,8 +550,9 @@ public class RegistrationService {
             log.info("[WEBHOOK] Received Razorpay event: {}", eventType);
 
             switch (eventType) {
-                case "payment.captured" -> handlePaymentCaptured(root);
-                case "payment.failed"   -> handlePaymentFailed(root);
+                case "payment.captured"   -> handlePaymentCaptured(root);
+                case "payment.failed"     -> handlePaymentFailed(root);
+                case "payment_link.paid"  -> handlePaymentLinkPaid(root);
                 default -> log.info("[WEBHOOK] Ignoring unhandled event type: {}", eventType);
             }
 
@@ -668,8 +669,64 @@ public class RegistrationService {
         log.info("[WEBHOOK] Ticket {} marked FAILED via webhook — member can retry.", registration.getTicketReference());
     }
 
+    /**
+     * payment_link.paid — Member paid via an admin-created Razorpay Payment Link.
+     *
+     * Fired when the member clicks the payment link and completes payment.
+     * The registration is already LINK_PENDING (seat was held from creation),
+     * so NO sold-out guard is needed — capacity was already accounted for at booking time.
+     *
+     * Webhook payload path:
+     *   root → payload → payment_link → entity → { id, reference_id, payments[0].payment_id }
+     */
+    private void handlePaymentLinkPaid(com.fasterxml.jackson.databind.JsonNode root) {
+        com.fasterxml.jackson.databind.JsonNode linkEntity =
+                root.path("payload").path("payment_link").path("entity");
+
+        String paymentLinkId     = linkEntity.path("id").asText();
+        String referenceId       = linkEntity.path("reference_id").asText();  // our ticketReference
+        String razorpayPaymentId = linkEntity.path("payments").path(0).path("payment_id").asText("");
+
+        log.info("[WEBHOOK] payment_link.paid — linkId={}, reference={}, paymentId={}",
+                paymentLinkId, referenceId, razorpayPaymentId);
+
+        Registration registration = registrationRepository.findByRazorpayPaymentLinkId(paymentLinkId)
+                .orElse(null);
+
+        if (registration == null) {
+            log.warn("[WEBHOOK] No LINK_PENDING registration found for paymentLinkId={} — " +
+                     "possibly already processed or unknown link.", paymentLinkId);
+            return;
+        }
+
+        // Idempotency guard
+        if (registration.getPaymentStatus() == PaymentStatus.CONFIRMED) {
+            log.info("[WEBHOOK] Ticket {} already CONFIRMED — skipping payment_link.paid (idempotent).",
+                    registration.getTicketReference());
+            return;
+        }
+
+        // Only act on LINK_PENDING
+        if (registration.getPaymentStatus() != PaymentStatus.LINK_PENDING) {
+            log.warn("[WEBHOOK] Ticket {} is in unexpected status {} for payment_link.paid — skipping.",
+                    registration.getTicketReference(), registration.getPaymentStatus());
+            return;
+        }
+
+        // Seat was already reserved at LINK_PENDING creation — no capacity check needed.
+        registration.setPaymentStatus(PaymentStatus.CONFIRMED);
+        if (!razorpayPaymentId.isBlank()) {
+            registration.setRazorpayPaymentId(razorpayPaymentId);
+        }
+        registrationRepository.save(registration);
+
+        log.info("[WEBHOOK] Ticket {} CONFIRMED ✅ via payment_link.paid — paymentId={}",
+                registration.getTicketReference(), razorpayPaymentId);
+    }
+
 
     // ─── Private Helpers ──────────────────────────────────────────────────────
+
 
     /**
      * Reads the MemberSession from Redis.
@@ -1026,6 +1083,7 @@ public class RegistrationService {
                 .ticketReference(r.getTicketReference())
                 .memberId(r.getMemberId())
                 .memberType(r.getMemberType())
+                .memberContact(r.getMemberContact())
                 .quantity(r.getQuantity())
                 .totalAmount(r.getTotalAmount())
                 .paymentStatus(r.getPaymentStatus())

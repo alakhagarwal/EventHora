@@ -1,5 +1,6 @@
 package com.eventHora.backend.service;
 
+import com.eventHora.backend.Enum.MemberType;
 import com.razorpay.Order;
 import com.razorpay.RazorpayClient;
 import com.razorpay.RazorpayException;
@@ -14,7 +15,9 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
 import java.util.HexFormat;
+import java.util.UUID;
 
 /**
  * Wraps all direct interactions with the Razorpay Java SDK.
@@ -89,6 +92,97 @@ public class RazorpayService {
                 receiptId);
 
         return razorpayOrderId;
+    }
+
+    // ─── Payment Link Creation ─────────────────────────────────────────────────
+
+    /**
+     * Result holder for a Razorpay Payment Link creation.
+     */
+    public record PaymentLinkResult(String id, String shortUrl) {}
+
+    /**
+     * Creates a Razorpay Payment Link and (when SMS/email is connected) sends
+     * it directly to the member's phone or email via Razorpay's built-in notification.
+     *
+     * CURRENT IMPLEMENTATION — Mock/Log Mode:
+     *   Since SMS and email delivery are not yet integrated, this method:
+     *   1. Attempts to create a real Razorpay Payment Link via the API.
+     *   2. Logs the payment link URL prominently so it can be copied manually.
+     *   3. Falls back to a mock URL if the API call fails (e.g. test-key restrictions).
+     *
+     * FUTURE:
+     *   Replace the log statement with actual SMS (Twilio/MSG91) or email (SendGrid)
+     *   delivery. The rest of the flow stays the same.
+     *
+     * @param amount       Total amount in rupees
+     * @param contact      Phone number (INDIAN) or email address (OVERSEAS)
+     * @param memberType   Determines the notify channel (sms vs email)
+     * @param description  Human-readable description shown on the payment page
+     * @param expiresAt    When the link should expire (use registration deadline)
+     * @param receiptId    Our internal ticket reference for reconciliation
+     * @return             PaymentLinkResult containing the link ID and short URL
+     */
+    public PaymentLinkResult createPaymentLink(
+            BigDecimal amount,
+            String contact,
+            MemberType memberType,
+            String description,
+            Instant expiresAt,
+            String receiptId) {
+
+        String shortUrl;
+        String linkId;
+
+        try {
+            RazorpayClient client = new RazorpayClient(keyId, keySecret);
+
+            JSONObject customerInfo = new JSONObject();
+            if (memberType == MemberType.INDIAN) {
+                customerInfo.put("contact", "+91" + contact.replaceAll("\\D", ""));
+            } else {
+                customerInfo.put("email", contact);
+            }
+
+            JSONObject notify = new JSONObject();
+            notify.put("sms",   memberType == MemberType.INDIAN);
+            notify.put("email", memberType == MemberType.OVERSEAS);
+
+            JSONObject payload = new JSONObject();
+            payload.put("amount",          amount.multiply(BigDecimal.valueOf(100)).intValue()); // paise
+            payload.put("currency",        "INR");
+            payload.put("description",     description);
+            payload.put("customer",        customerInfo);
+            payload.put("notify",          notify);
+            payload.put("reminder_enable", false);
+            payload.put("expire_by",       expiresAt.getEpochSecond());
+            payload.put("reference_id",    receiptId);
+
+            com.razorpay.PaymentLink link = client.paymentLink.create(payload);
+            linkId   = link.get("id");
+            shortUrl = link.get("short_url");
+
+            log.info("[PAYMENT-LINK] Created Razorpay Payment Link ✅ " +
+                     "id={}, amount=₹{}, contact={}, receipt={}",
+                     linkId, amount, contact, receiptId);
+
+        } catch (RazorpayException e) {
+            // API call failed (likely test-key restriction or network issue).
+            // Generate a mock link so the flow continues during development.
+            linkId   = "plink_MOCK_" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+            shortUrl = "https://rzp.io/l/MOCK-" + receiptId;
+            log.warn("[PAYMENT-LINK] Razorpay API failed ({}), using MOCK link. " +
+                     "Replace with real integration when SMS/email service is ready.", e.getMessage());
+        }
+
+        // ─── MOCK DELIVERY: Log the URL until SMS/email service is connected ───
+        // TODO: Replace this block with actual SMS (MSG91/Twilio) or email (SendGrid) call.
+        log.info("[PAYMENT-LINK] 📲 SEND TO MEMBER {} ({}): Payment Link = {}",
+                 contact, memberType, shortUrl);
+        log.info("[PAYMENT-LINK] Amount: ₹{} | Receipt: {} | Expires: {}",
+                 amount, receiptId, expiresAt);
+
+        return new PaymentLinkResult(linkId, shortUrl);
     }
 
     // ─── Signature Verification ────────────────────────────────────────────────
