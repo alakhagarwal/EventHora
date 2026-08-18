@@ -17,11 +17,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
-/**
- * Intercepts every HTTP request exactly once.
- * Reads the "Authorization: Bearer <token>" header,
- * validates the JWT, and populates the Spring Security context.
- */
 @Component
 @RequiredArgsConstructor
 public class JwtAuthFilter extends OncePerRequestFilter {

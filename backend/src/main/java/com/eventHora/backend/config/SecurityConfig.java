@@ -26,32 +26,31 @@ import com.eventHora.backend.security.JwtAuthFilter;
 
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity          // enables @PreAuthorize on controller methods
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final SystemUserRepository userRepository;
 
-    /** Public routes — no JWT required */
     private static final String[] PUBLIC_URLS = {
             "/api/auth/login",
             "/api/registration/**",
-            "/api/webhooks/**",  // Razorpay posts here — secured by HMAC-SHA256 signature, not JWT
-            "/api/health"        // UptimeRobot liveness ping — no auth needed
+            "/api/webhooks/**",
+            "/api/health"
     };
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
-                .csrf(AbstractHttpConfigurer::disable)          // REST API — no CSRF needed
-                .cors(Customizer.withDefaults())                // picks up CorsConfigurationSource bean from CorsConfig
+                .csrf(AbstractHttpConfigurer::disable)
+                .cors(Customizer.withDefaults())
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_URLS).permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/events", "/api/events/*").permitAll() // Public event fetch
-                        .anyRequest().authenticated()           // everything else needs a valid JWT
+                        .requestMatchers(HttpMethod.GET, "/api/events", "/api/events/*").permitAll()
+                        .anyRequest().authenticated()
                 )
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)

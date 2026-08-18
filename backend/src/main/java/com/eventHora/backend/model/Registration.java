@@ -13,16 +13,6 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-/**
- * A single booking made by an RIC member for a specific event.
- *
- * One Registration = one member booking N tickets for one event.
- *
- * Seat reservation model:
- *  - A seat is considered "taken" when paymentStatus is CONFIRMED, FREE, PAY_AT_GATE, or COMPLIMENTARY.
- *  - PENDING seats do NOT count against capacity (prevents ghost reservations from incomplete payments).
- *  - FAILED registrations are ignored entirely.
- */
 @Entity
 @Table(
     name = "registrations",
@@ -41,58 +31,46 @@ public class Registration {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    // ─── Who ──────────────────────────────────────────────────────────────────
-
     @Column(name = "member_id", nullable = false)
-    private String memberId;               // RIC Member ID e.g. "RIC-2024-04512"
+    private String memberId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private MemberType memberType;         // INDIAN or OVERSEAS — determines OTP channel
-
-    // ─── What ─────────────────────────────────────────────────────────────────
+    private MemberType memberType;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "event_id", nullable = false)
-    private Event event;                   // The event being booked
+    private Event event;
 
     @Column(nullable = false)
-    private int quantity;                  // Number of tickets booked (1 to maxTicketsPerMember)
+    private int quantity;
 
     @Column(nullable = false, precision = 10, scale = 2)
-    private BigDecimal totalAmount;        // Final amount charged: paidTickets * ticketPrice
-
-    // ─── Payment ──────────────────────────────────────────────────────────────
+    private BigDecimal totalAmount;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private PaymentStatus paymentStatus;   // Current payment state
+    private PaymentStatus paymentStatus;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private PaymentPreference paymentPreference; // How the user chose to pay
+    private PaymentPreference paymentPreference;
 
     @Column
-    private String razorpayOrderId;        // Razorpay order ID — null for free/at-gate bookings
+    private String razorpayOrderId;
 
     @Column
-    private String razorpayPaymentId;      // Razorpay payment ID — set after payment.captured (e.g. "pay_Qx3Rabc...")
-
-    // ─── Gate Check-In ────────────────────────────────────────────────────────
+    private String razorpayPaymentId;
 
     @Column(name = "is_checked_in", nullable = false)
     @Builder.Default
-    private boolean isCheckedIn = false;   // Flipped to true when staff scans QR at the gate
+    private boolean isCheckedIn = false;
 
     @Column
-    private LocalDateTime checkedInAt;     // Timestamp of gate check-in — null until staff scans the QR
-
-    // ─── Ticket ───────────────────────────────────────────────────────────────
+    private LocalDateTime checkedInAt;
 
     @Column(nullable = false, unique = true)
-    private String ticketReference;        // User-facing ticket ID e.g. "TKT-2026-AB12CD"
-
-    // ─── Audit ────────────────────────────────────────────────────────────────
+    private String ticketReference;
 
     @Column(nullable = false)
     private LocalDateTime bookedAt;

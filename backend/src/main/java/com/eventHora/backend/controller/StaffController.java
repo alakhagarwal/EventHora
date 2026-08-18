@@ -11,12 +11,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-/**
- * Controller for event-day gate operations performed by STAFF (or ADMIN).
- *
- * All endpoints require a valid JWT with STAFF or ADMIN role.
- * Base path: /api/staff
- */
 @RestController
 @RequestMapping("/api/staff")
 @RequiredArgsConstructor
@@ -24,75 +18,18 @@ public class StaffController {
 
     private final RegistrationService registrationService;
 
-    /**
-     * POST /api/staff/checkin
-     *
-     * Called when a STAFF member scans a member's QR code at the gate.
-     *
-     * The ticketReference is embedded in the QR code on the member's ticket.
-     *
-     * Outcomes:
-     *  - 200 OK, alreadyCheckedIn=false  → First-time scan, member admitted ✅
-     *  - 200 OK, alreadyCheckedIn=true   → Ticket was already scanned (duplicate) ⚠️
-     *  - 404 Not Found                   → Ticket reference does not exist
-     *  - 409 Conflict                    → PENDING payment (incomplete) or FAILED payment
-     *
-     * Access: STAFF, ADMIN
-     */
     @PostMapping("/checkin")
     @PreAuthorize("hasAnyRole('STAFF', 'ADMIN')")
     public ResponseEntity<CheckInResponse> checkIn(@Valid @RequestBody CheckInRequest request) {
         return ResponseEntity.ok(registrationService.checkIn(request));
     }
 
-    /**
-     * POST /api/staff/record-payment
-     *
-     * Records cash or complimentary payment for a PAY_AT_GATE ticket and
-     * simultaneously checks the member in. These two steps are atomic —
-     * staff does NOT need to do a separate QR scan after recording payment.
-     *
-     * Actions:
-     *  - "PAID"          → member paid cash; status becomes CONFIRMED
-     *  - "COMPLIMENTARY" → staff waives fee; status becomes COMPLIMENTARY
-     *
-     * Only tickets with current status PAY_AT_GATE can be processed here.
-     *
-     * Outcomes:
-     *  - 200 OK                → Payment recorded + member admitted ✅
-     *  - 400 Bad Request       → Invalid action value
-     *  - 404 Not Found         → Ticket reference does not exist
-     *  - 409 Conflict          → Ticket is not in PAY_AT_GATE status
-     *
-     * Access: STAFF, ADMIN
-     */
     @PostMapping("/record-payment")
     @PreAuthorize("hasAnyRole('STAFF', 'ADMIN')")
     public ResponseEntity<CheckInResponse> recordPayment(@Valid @RequestBody RecordPaymentRequest request) {
         return ResponseEntity.ok(registrationService.recordGatePayment(request));
     }
 
-    /**
-     * GET /api/staff/lookup?ticketReference={ref}
-     *
-     * Pure read-only ticket lookup by ticket reference.
-     *
-     * Used as a manual fallback when QR scanning fails (dirty QR, cracked screen,
-     * low battery, printed ticket smudge). Staff types the reference (e.g.
-     * "TKT-2026-AB12CD") and this endpoint returns the full booking details for
-     * visual verification — member ID, quantity, payment status, check-in status.
-     *
-     * This endpoint does NOT check the member in or modify any data.
-     * After verifying the member's identity, staff then calls:
-     *   - POST /api/staff/checkin        (if status is CONFIRMED / FREE / COMPLIMENTARY)
-     *   - POST /api/staff/record-payment (if status is PAY_AT_GATE)
-     *
-     * Outcomes:
-     *  - 200 OK        → Ticket found, details returned ✅
-     *  - 404 Not Found → Ticket reference does not exist
-     *
-     * Access: STAFF, ADMIN
-     */
     @GetMapping("/lookup")
     @PreAuthorize("hasAnyRole('STAFF', 'ADMIN')")
     public ResponseEntity<RegistrationSummaryResponse> lookupTicket(

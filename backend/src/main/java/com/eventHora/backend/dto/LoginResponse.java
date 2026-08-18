@@ -7,7 +7,7 @@ import lombok.Data;
 @Builder
 public class LoginResponse {
     private String accessToken;
-    private String tokenType;     // always "Bearer"
+    private String tokenType;
     private String role;
     private String name;
     private String email;

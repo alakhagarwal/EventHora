@@ -33,8 +33,6 @@ public class EventService {
     private final S3Service s3Service;
     private final RegistrationRepository registrationRepository;
 
-    // ─── Create ───────────────────────────────────────────────────────────────
-
     public EventResponse createEvent(CreateEventRequest request, String adminEmail) {
         SystemUser admin = userRepository.findByEmail(adminEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("Admin not found"));
@@ -45,7 +43,7 @@ public class EventService {
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .category(request.getCategory())
-                .bannerUrl(request.getBannerUrl()) // null when creating; uploaded via S3 separately
+                .bannerUrl(request.getBannerUrl())
                 .eventDate(request.getEventDate())
                 .startTime(request.getStartTime())
                 .endTime(request.getEndTime())
@@ -69,12 +67,9 @@ public class EventService {
         return toEventResponse(eventRepository.save(event));
     }
 
-    // ─── Update ───────────────────────────────────────────────────────────────
-
     public EventResponse updateEvent(UUID id, UpdateEventRequest request) {
         Event event = findEventById(id);
 
-        // Only apply non-null fields (PATCH semantics)
         if (request.getTitle() != null)                         event.setTitle(request.getTitle());
         if (request.getDescription() != null)                   event.setDescription(request.getDescription());
         if (request.getCategory() != null)                      event.setCategory(request.getCategory());
@@ -98,8 +93,6 @@ public class EventService {
         return toEventResponse(eventRepository.save(event));
     }
 
-    // ─── Publish ──────────────────────────────────────────────────────────────
-
     public EventResponse publishEvent(UUID id) {
         Event event = findEventById(id);
         if (event.getStatus() == EventStatus.CANCELLED) {
@@ -108,8 +101,6 @@ public class EventService {
         event.setStatus(EventStatus.PUBLISHED);
         return toEventResponse(eventRepository.save(event));
     }
-
-    // ─── Cancel ───────────────────────────────────────────────────────────────
 
     public void cancelEvent(UUID id) {
         Event event = findEventById(id);
@@ -120,16 +111,12 @@ public class EventService {
         eventRepository.save(event);
     }
 
-    // ─── List all (admin) ─────────────────────────────────────────────────────
-
     public List<EventSummaryResponse> getAllEvents() {
         return eventRepository.findAllByOrderByEventDateDesc()
                 .stream()
                 .map(this::toSummaryResponse)
                 .toList();
     }
-
-    // ─── List all (public) ────────────────────────────────────────────────────
 
     public List<PublicEventResponse> getPublicEvents() {
         return eventRepository.findByStatusOrderByEventDateDesc(EventStatus.PUBLISHED)
@@ -138,12 +125,6 @@ public class EventService {
                 .toList();
     }
 
-    // ─── Get single event (admin) ─────────────────────────────────────────────
-
-    /**
-     * Returns the full EventResponse for any event regardless of status.
-     * Used by the admin dashboard before making a PATCH call.
-     */
     public EventResponse getEventById(UUID id) {
         return toEventResponse(findEventById(id));
     }
@@ -153,18 +134,12 @@ public class EventService {
                 .orElseThrow(() -> new ResourceNotFoundException("Event not found"));
 
         if (event.getStatus() != EventStatus.PUBLISHED) {
-            throw new ResourceNotFoundException("Event not found"); // Don't expose non-published events
+            throw new ResourceNotFoundException("Event not found");
         }
-        
+
         return toPublicEventResponse(event);
     }
 
-    // ─── Banner upload ────────────────────────────────────────────────────────
-
-    /**
-     * Uploads a banner image to S3 and saves the resulting URL on the event.
-     * Deletes the previous banner from S3 first if one already exists.
-     */
     public EventResponse uploadBanner(UUID id, MultipartFile file) throws IOException {
         Event event = findEventById(id);
 
@@ -177,18 +152,11 @@ public class EventService {
         return toEventResponse(eventRepository.save(event));
     }
 
-    // ─── Private helpers ──────────────────────────────────────────────────────
-
     private Event findEventById(UUID id) {
         return eventRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Event not found with id: " + id));
     }
 
-    /**
-     * Converts a title to a URL-safe slug.
-     * "Mere Mehboob Na Ja..." → "mere-mehboob-na-ja-3f8a2b"
-     * The 6-char suffix guarantees uniqueness without needing sequential numbers.
-     */
     private String generateUniqueSlug(String title) {
         String normalized = Normalizer.normalize(title, Normalizer.Form.NFD);
         String slug = normalized
@@ -207,8 +175,6 @@ public class EventService {
         return candidate;
     }
 
-    // ─── Mappers ──────────────────────────────────────────────────────────────
-
     private EventResponse toEventResponse(Event event) {
         int booked = registrationRepository.sumLockedTicketsForEvent(event.getId());
         return EventResponse.builder()
@@ -216,8 +182,8 @@ public class EventService {
                 .title(event.getTitle())
                 .description(event.getDescription())
                 .category(event.getCategory())
-                .bannerUrl(event.getBannerUrl() != null && !event.getBannerUrl().isBlank() 
-                        ? s3Service.generatePresignedUrl(event.getBannerUrl(), Duration.ofDays(7)) 
+                .bannerUrl(event.getBannerUrl() != null && !event.getBannerUrl().isBlank()
+                        ? s3Service.generatePresignedUrl(event.getBannerUrl(), Duration.ofDays(7))
                         : null)
                 .eventDate(event.getEventDate())
                 .startTime(event.getStartTime())
@@ -247,13 +213,13 @@ public class EventService {
     private EventSummaryResponse toSummaryResponse(Event event) {
         int booked = registrationRepository.sumLockedTicketsForEvent(event.getId());
         boolean isSoldOut = booked >= event.getTotalCapacity();
-        
+
         return EventSummaryResponse.builder()
                 .id(event.getId())
                 .title(event.getTitle())
                 .category(event.getCategory())
-                .bannerUrl(event.getBannerUrl() != null && !event.getBannerUrl().isBlank() 
-                        ? s3Service.generatePresignedUrl(event.getBannerUrl(), Duration.ofDays(7)) 
+                .bannerUrl(event.getBannerUrl() != null && !event.getBannerUrl().isBlank()
+                        ? s3Service.generatePresignedUrl(event.getBannerUrl(), Duration.ofDays(7))
                         : null)
                 .eventDate(event.getEventDate())
                 .startTime(event.getStartTime())
@@ -309,22 +275,10 @@ public class EventService {
                 .isSoldOut(isSoldOut)
                 .build();
     }
-    // ─── Phase 7A: Admin Registration List ───────────────────────────────────────
 
-    /**
-     * GET /api/admin/events/{eventId}/registrations
-     *
-     * Returns all registrations for a given event, ordered by booking time (newest first).
-     * Verifies the event exists before querying registrations so we return a meaningful 404
-     * rather than an empty list when the event ID is wrong.
-     *
-     * The LAZY association to Event on Registration is resolved inside this @Transactional
-     * method, so event.getTitle() etc. are safe to call without LazyInitializationException.
-     */
     @Transactional(readOnly = true)
     public List<RegistrationSummaryResponse> getRegistrationsForEvent(UUID eventId) {
 
-        // Verify event exists — throw 404 if not
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new ResourceNotFoundException("Event not found: " + eventId));
 
@@ -355,27 +309,14 @@ public class EventService {
                 .build();
     }
 
-    // ─── Phase 7B: Admin Payment Summary ─────────────────────────────────────────
-
-    /**
-     * GET /api/admin/events/{eventId}/payment-summary
-     *
-     * Computes a full payment + capacity snapshot for one event.
-     * Uses a single aggregation query (GROUP BY payment_status) to minimise DB round-trips.
-     *
-     * All amounts are BigDecimal to preserve financial precision.
-     */
     @Transactional(readOnly = true)
     public PaymentSummaryResponse getPaymentSummary(UUID eventId) {
 
-        // Verify event exists
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new ResourceNotFoundException("Event not found: " + eventId));
 
-        // One DB call: aggregates per status
         List<Object[]> aggregates = registrationRepository.getPaymentAggregatesByEventId(eventId);
 
-        // Initialise counters
         long confirmedCount      = 0;
         long payAtGateCount      = 0;
         long freeCount           = 0;
@@ -388,7 +329,6 @@ public class EventService {
         BigDecimal pendingGateCollection = BigDecimal.ZERO;
         BigDecimal complimentaryWaived   = BigDecimal.ZERO;
 
-        // Walk the aggregation rows
         for (Object[] row : aggregates) {
             String status         = (String) row[0];
             long   regCount       = ((Number) row[1]).longValue();
@@ -407,17 +347,14 @@ public class EventService {
             }
         }
 
-        // Locked seats = CONFIRMED + FREE + PAY_AT_GATE + COMPLIMENTARY (in TICKETS)
         int seatsLocked    = registrationRepository.sumLockedTicketsForEvent(eventId);
         int seatsRemaining = Math.max(0, event.getTotalCapacity() - seatsLocked);
 
-        // Check-in stats — BOOKING level (how many members/registrations have arrived)
         long checkedInCount    = registrationRepository.countCheckedInForEvent(eventId);
-        // Locked bookings = confirmedCount + payAtGateCount + freeCount + complimentaryCount
+
         long lockedBookings    = confirmedCount + payAtGateCount + freeCount + complimentaryCount;
         long notCheckedInCount = Math.max(0, lockedBookings - checkedInCount);
 
-        // Check-in stats — TICKET level (comparable to seatsLocked, which is also in tickets)
         long checkedInTickets    = registrationRepository.sumCheckedInTicketsForEvent(eventId);
         long notCheckedInTickets = Math.max(0, seatsLocked - checkedInTickets);
 
@@ -445,24 +382,9 @@ public class EventService {
                 .build();
     }
 
-    // ─── Phase 7C: Admin Dashboard ────────────────────────────────────────────────
-
-    /**
-     * GET /api/admin/dashboard
-     *
-     * Returns a cross-event platform snapshot: event counts by status,
-     * all-time registration and revenue stats, and this-month equivalents.
-     *
-     * Uses 4 DB queries:
-     *   1. countEventsByStatus()       — events grouped by status
-     *   2. countUpcomingEvents()       — PUBLISHED events on/after today
-     *   3. getGlobalPaymentAggregates() — all-time registration/revenue by status
-     *   4. getMonthlyPaymentAggregates() — same, scoped to current calendar month
-     */
     @Transactional(readOnly = true)
     public DashboardResponse getDashboard() {
 
-        // ── 1. Events by status ──────────────────────────────────────────────
         long totalEvents      = 0;
         long publishedEvents  = 0;
         long draftEvents      = 0;
@@ -483,7 +405,6 @@ public class EventService {
 
         long upcomingEvents = eventRepository.countUpcomingEvents(java.time.LocalDate.now());
 
-        // ── 2. Global (all-time) registration + revenue aggregates ───────────
         long totalRegistrations  = 0;
         long lockedRegistrations = 0;
         long totalTicketsSold    = 0;
@@ -521,11 +442,10 @@ public class EventService {
                     totalTicketsSold    += ticketCnt;
                     complimentaryWaived  = complimentaryWaived.add(amount);
                 }
-                case PENDING, FAILED -> { /* don't count as locked */ }
+                case PENDING, FAILED -> {  }
             }
         }
 
-        // ── 3. This-month registration + revenue aggregates ──────────────────
         java.time.LocalDateTime startOfMonth = java.time.LocalDate.now()
                 .withDayOfMonth(1)
                 .atStartOfDay();
@@ -541,16 +461,14 @@ public class EventService {
             BigDecimal amount    = new BigDecimal(row[3].toString());
 
             PaymentStatus ps = PaymentStatus.valueOf(status);
-            // Count all registrations this month (all statuses)
+
             registrationsThisMonth += regCount;
 
-            // Only locked statuses count as "sold" tickets this month
             switch (ps) {
                 case CONFIRMED, FREE, PAY_AT_GATE, COMPLIMENTARY -> ticketsSoldThisMonth += ticketCnt;
-                default -> { /* PENDING/FAILED don't count */ }
+                default -> {  }
             }
 
-            // Only CONFIRMED counts as revenue this month
             if (ps == PaymentStatus.CONFIRMED) {
                 revenueThisMonth = revenueThisMonth.add(amount);
             }

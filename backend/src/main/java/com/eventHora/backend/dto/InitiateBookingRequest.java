@@ -8,12 +8,6 @@ import lombok.Data;
 
 import java.util.UUID;
 
-/**
- * Request DTO for POST /api/registration/initiate
- *
- * The frontend sends this after the member has been verified (verify-member).
- * The sessionToken ties this request to the verified Redis session.
- */
 @Data
 public class InitiateBookingRequest {
 
@@ -27,5 +21,5 @@ public class InitiateBookingRequest {
     private int quantity;
 
     @NotNull(message = "Payment preference is required")
-    private PaymentPreference paymentPreference;  // ONLINE or AT_GATE
+    private PaymentPreference paymentPreference;
 }

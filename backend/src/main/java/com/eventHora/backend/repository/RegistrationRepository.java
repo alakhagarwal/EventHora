@@ -13,14 +13,6 @@ import java.util.UUID;
 @Repository
 public interface RegistrationRepository extends JpaRepository<Registration, UUID> {
 
-    /**
-     * Sums the quantity of all "locked" registrations for a given event.
-     *
-     * CONFIRMED, FREE, PAY_AT_GATE and COMPLIMENTARY all hold a real seat.
-     * PENDING is intentionally excluded — an incomplete Razorpay payment
-     * should not block other members from booking.
-     * FAILED is excluded — the seat is effectively released.
-     */
     @Query(
         value = """
             SELECT COALESCE(SUM(r.quantity), 0)
@@ -32,58 +24,16 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
     )
     int sumLockedTicketsForEvent(@Param("eventId") UUID eventId);
 
-    /**
-     * Returns the existing registration for a member + event combination.
-     * Used to prevent duplicate bookings.
-     */
     Optional<Registration> findByMemberIdAndEventId(String memberId, UUID eventId);
 
-    /**
-     * Looks up a registration by the user-facing ticket reference.
-     * Used by /confirm-payment and the webhook to finalize a PENDING booking.
-     */
     Optional<Registration> findByTicketReference(String ticketReference);
 
-    /**
-     * Looks up a registration by the Razorpay order ID.
-     * Used by the webhook to find a PENDING booking when the frontend fails to call /confirm-payment.
-     */
     Optional<Registration> findByRazorpayOrderId(String razorpayOrderId);
 
-    // ─── Phase 8A: Member Self-Service (My Bookings) ──────────────────────────
-
-    /**
-     * Returns all registrations for a given member, ordered by booking time (newest first).
-     * Used by GET /api/registration/my-bookings.
-     *
-     * The LAZY Event association is safe to traverse inside a @Transactional service method.
-     * Results include ALL statuses — PENDING, FAILED included — so the member can see their
-     * full history, not just successful bookings.
-     */
     List<Registration> findByMemberIdOrderByBookedAtDesc(String memberId);
 
-    // ─── Phase 7A: Admin Registration List ────────────────────────────────────
-
-    /**
-     * Returns all registrations for a given event, ordered by booking time (newest first).
-     * Used by GET /api/admin/events/{eventId}/registrations.
-     */
     List<Registration> findByEventIdOrderByBookedAtDesc(UUID eventId);
 
-    // ─── Phase 7B: Admin Payment Summary ──────────────────────────────────────
-
-    /**
-     * Returns aggregate payment data per status for a given event.
-     *
-     * Each row is an Object[] with:
-     *   [0] payment_status    (String)
-     *   [1] registrationCount (Long)      — number of Registration rows for this status
-     *   [2] ticketCount       (Long)      — sum of quantity (total tickets, not just bookings)
-     *   [3] totalAmount       (BigDecimal)— sum of totalAmount for this status
-     *
-     * Note: Using nativeQuery=true so we can alias columns clearly.
-     * SUM(quantity) is used as ticketCount because each Registration can book N tickets.
-     */
     @Query(
         value = """
             SELECT
@@ -99,14 +49,6 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
     )
     List<Object[]> getPaymentAggregatesByEventId(@Param("eventId") UUID eventId);
 
-    /**
-     * Counts how many REGISTRATION ROWS for an event have been checked in.
-     * "How many members (bookings) are at the venue."
-     * Only counts locked statuses — excludes PENDING/FAILED.
-     *
-     * Note: One registration may cover multiple tickets (quantity > 1).
-     * Use sumCheckedInTicketsForEvent() when you need ticket-level counts.
-     */
     @Query(
         value = """
             SELECT COUNT(r.id)
@@ -119,13 +61,6 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
     )
     long countCheckedInForEvent(@Param("eventId") UUID eventId);
 
-    /**
-     * Sums the QUANTITY of tickets for checked-in registrations.
-     * "How many individual tickets have entered the venue."
-     *
-     * This is the correct value to subtract from seatsLocked to get
-     * notCheckedInCount, because seatsLocked is also in tickets (SUM of quantity).
-     */
     @Query(
         value = """
             SELECT COALESCE(SUM(r.quantity), 0)
@@ -138,13 +73,6 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
     )
     long sumCheckedInTicketsForEvent(@Param("eventId") UUID eventId);
 
-    // ─── Phase 7C: Dashboard ──────────────────────────────────────────────────
-
-    /**
-     * Overall revenue breakdown across ALL events.
-     * Returns Object[] rows: [0] = payment_status, [1] = registrationCount, [2] = totalAmount.
-     * Used by the dashboard to compute all-time totalRevenue, pendingGateCollection, complimentaryWaived.
-     */
     @Query(
         value = """
             SELECT
@@ -159,12 +87,6 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
     )
     List<Object[]> getGlobalPaymentAggregates();
 
-    /**
-     * Revenue and registration stats for bookings created in the current calendar month.
-     * :startOfMonth is the 1st of the current month at 00:00:00.
-     *
-     * Returns Object[] rows: [0] = payment_status, [1] = registrationCount, [2] = ticketCount, [3] = totalAmount.
-     */
     @Query(
         value = """
             SELECT
@@ -179,18 +101,7 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
         nativeQuery = true
     )
     List<Object[]> getMonthlyPaymentAggregates(@Param("startOfMonth") java.time.LocalDateTime startOfMonth);
-    // ─── Schedulers ───────────────────────────────────────────────────────────
 
-    /**
-     * Finds all PENDING registrations whose bookedAt timestamp is older than `cutoff`.
-     *
-     * These are Razorpay orders where the member opened the payment popup but
-     * never completed the payment and the webhook never fired (e.g. browser crash,
-     * app killed). We expire them after a configurable window so that their seats
-     * are released back into the available pool.
-     *
-     * Used by PendingPaymentExpiryScheduler.
-     */
     @Query(
         value = """
             SELECT r.*

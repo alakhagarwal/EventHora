@@ -11,11 +11,6 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 
-/**
- * Request DTO for ADMIN partially updating an existing event.
- * All fields are optional — only the non-null fields will be applied.
- * This maps to PATCH /api/events/{id}
- */
 @Data
 public class UpdateEventRequest {
 
@@ -29,9 +24,6 @@ public class UpdateEventRequest {
     private LocalTime startTime;
     private LocalTime endTime;
 
-    // No @Future here — for partial updates the existing date is preserved as-is
-    // when the admin doesn't change the field. Validation is enforced at creation time
-    // via CreateEventRequest which still has @Future on registrationDeadline.
     private LocalDateTime registrationDeadline;
 
     private String venue;
@@ -47,7 +39,7 @@ public class UpdateEventRequest {
     private Integer freeTicketsPerRegistration;
 
     @DecimalMin(value = "0.0", message = "Ticket price cannot be negative")
-    private BigDecimal ticketPrice;               // Unified price per paid ticket
+    private BigDecimal ticketPrice;
 
     @DecimalMin(value = "0.0", message = "Platform fee cannot be negative")
     private BigDecimal platformFeePerTicket;
@@ -55,7 +47,7 @@ public class UpdateEventRequest {
     @Min(value = 0, message = "Minimum age cannot be negative")
     private Integer minimumAge;
 
-    private List<String> importantNotes;         // Replaces all existing notes when provided
+    private List<String> importantNotes;
     private String contactPersonName;
     private String contactPersonPhone;
 }

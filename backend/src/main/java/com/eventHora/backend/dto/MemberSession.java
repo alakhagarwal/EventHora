@@ -8,10 +8,6 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 
-/**
- * Represents the verified member session stored in Redis.
- * This ensures the backend knows exactly who is booking without trusting the frontend.
- */
 @Data
 @Builder
 @NoArgsConstructor

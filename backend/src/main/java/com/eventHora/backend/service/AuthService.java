@@ -25,12 +25,9 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
 
-    /**
-     * Authenticate a system user (ADMIN or STAFF) and return a JWT.
-     */
     public LoginResponse login(LoginRequest request) {
         try {
-            // Delegates to DaoAuthenticationProvider → BCrypt password check
+
             authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
             );
@@ -52,9 +49,6 @@ public class AuthService {
                 .build();
     }
 
-    /**
-     * ADMIN creates a new STAFF or ADMIN account.
-     */
     public UserProfileResponse createUser(CreateStaffRequest request) {
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new DuplicateResourceException("A user with this email already exists");
@@ -73,18 +67,12 @@ public class AuthService {
         return toProfileResponse(saved);
     }
 
-    /**
-     * Return the profile of the currently authenticated user.
-     */
     public UserProfileResponse getProfile(String email) {
         SystemUser user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         return toProfileResponse(user);
     }
 
-    /**
-     * ADMIN lists all system users.
-     */
     public List<UserProfileResponse> getAllUsers() {
         return userRepository.findAll()
                 .stream()
@@ -92,17 +80,12 @@ public class AuthService {
                 .toList();
     }
 
-    /**
-     * ADMIN deactivates a user account.
-     */
     public void deactivateUser(String email) {
         SystemUser user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + email));
         user.setActive(false);
         userRepository.save(user);
     }
-
-    // --- Private helpers ---
 
     private UserProfileResponse toProfileResponse(SystemUser user) {
         return UserProfileResponse.builder()

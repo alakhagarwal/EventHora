@@ -19,12 +19,6 @@ public interface EventRepository extends JpaRepository<Event, UUID> {
     Optional<Event> findByUniqueEventLink(String uniqueEventLink);
     boolean existsByUniqueEventLink(String uniqueEventLink);
 
-    // ─── Phase 7C: Dashboard ──────────────────────────────────────────────────
-
-    /**
-     * Counts events grouped by status for the dashboard events overview.
-     * Returns Object[] rows: [0] = status String, [1] = count Long.
-     */
     @Query(
         value = """
             SELECT e.status AS status, COUNT(e.id) AS cnt
@@ -35,10 +29,6 @@ public interface EventRepository extends JpaRepository<Event, UUID> {
     )
     List<Object[]> countEventsByStatus();
 
-    /**
-     * Counts PUBLISHED events whose eventDate is on or after today.
-     * "Upcoming" = still in the future (registration may or may not be open).
-     */
     @Query(
         value = """
             SELECT COUNT(e.id)
@@ -50,18 +40,6 @@ public interface EventRepository extends JpaRepository<Event, UUID> {
     )
     long countUpcomingEvents(@Param("today") LocalDate today);
 
-    // ─── Schedulers ───────────────────────────────────────────────────────────
-
-    /**
-     * Finds all PUBLISHED events whose eventDate is strictly before `today`.
-     *
-     * These are events that have already happened but were never manually marked
-     * as COMPLETED by an admin. The EventCompletionScheduler calls this nightly
-     * to auto-complete them so the dashboard's completedEvents count is accurate.
-     *
-     * CANCELLED events are intentionally excluded — a cancelled event that passed
-     * its date should stay CANCELLED, not become COMPLETED.
-     */
     @Query(
         value = """
             SELECT e.*

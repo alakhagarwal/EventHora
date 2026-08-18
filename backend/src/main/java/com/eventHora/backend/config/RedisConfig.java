@@ -14,12 +14,11 @@ public class RedisConfig {
     public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
-        
+
         template.setKeySerializer(new StringRedisSerializer());
-        
-        // Use the modern, non-deprecated factory method for JSON serialization
+
         template.setValueSerializer(RedisSerializer.json());
-        
+
         return template;
     }
 }

@@ -17,19 +17,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Represents an RIC event (e.g. Musical Evening, Kathak Dance).
- *
- * Pricing model (simplified):
- *  - One unified ticketPrice applies to every ticket (member + any accompanying person).
- *  - freeTicketsPerRegistration defines how many of those are free per booking.
- *  - maxTicketsPerMember is the total a member can book in a single registration
- *    (covering both themselves and anyone they bring along).
- *  - Registration has a hard deadline (registrationDeadline).
- *  - Some events require members to have paid their annual fee.
- *  - importantNotes stores the free-form bullet points admins write in event communications.
- *  - Show and dinner can be at different venues (venue + additionalVenueInfo).
- */
 @Entity
 @Table(name = "events")
 @Data
@@ -42,101 +29,77 @@ public class Event {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    // ─── Basic Info ────────────────────────────────────────────────────────────
-
     @Column(nullable = false)
-    private String title;                         // e.g. "Mere Mehboob Na Ja…"
+    private String title;
 
     @Column(columnDefinition = "TEXT")
-    private String description;                   // Full event write-up / invite text
+    private String description;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private EventCategory category;               // MUSIC, DANCE, CULTURAL, etc.
+    private EventCategory category;
 
     @Column
-    private String bannerUrl;                     // S3 URL of event banner/poster image (set via /banner upload)
-
-    // ─── Schedule ─────────────────────────────────────────────────────────────
+    private String bannerUrl;
 
     @Column(nullable = false)
-    private LocalDate eventDate;                  // Date: 08 July 2026
+    private LocalDate eventDate;
 
     @Column(nullable = false)
-    private LocalTime startTime;                  // Show: 06:30 PM
+    private LocalTime startTime;
 
     @Column(nullable = false)
-    private LocalTime endTime;                    // Show ends: 08:00 PM
+    private LocalTime endTime;
 
     @Column(nullable = false)
-    private LocalDateTime registrationDeadline;   // Deadline: 03:00 PM of 7 July 2026
-
-    // ─── Venue ────────────────────────────────────────────────────────────────
+    private LocalDateTime registrationDeadline;
 
     @Column(nullable = false)
-    private String venue;                         // Primary venue: "Main Audi, RIC"
+    private String venue;
 
     @Column
-    private String additionalVenueInfo;           // Secondary venue: "Convention Hall with Lawn"
-                                                  // Used for gala dinners or post-show activities
-
-    // ─── Capacity & Tickets ───────────────────────────────────────────────────
+    private String additionalVenueInfo;
 
     @Column(nullable = false)
-    private int totalCapacity;                    // Total seats available for the event
+    private int totalCapacity;
 
     @Column(nullable = false)
-    private int maxTicketsPerMember;              // Total tickets per registration (member + anyone they bring)
+    private int maxTicketsPerMember;
 
     @Column(nullable = false)
-    private int freeTicketsPerRegistration;       // How many of those maxTicketsPerMember are free
-                                                  // e.g. 2 free out of 4 total → pay for 2
+    private int freeTicketsPerRegistration;
 
     @Column(nullable = false, precision = 10, scale = 2)
-    private BigDecimal ticketPrice;               // Unified price per paid ticket (same for everyone)
-                                                  // 0.00 for fully free events
-
-    // ─── Platform Fee ─────────────────────────────────────────────────────────
+    private BigDecimal ticketPrice;
 
     @Column(nullable = false, precision = 10, scale = 2)
-    private BigDecimal platformFeePerTicket;     // EventHora fee per paid ticket
-
-    // ─── Event Rules ──────────────────────────────────────────────────────────
+    private BigDecimal platformFeePerTicket;
 
     @Column
-    private Integer minimumAge;                  // null = no restriction, 18 = 18+
+    private Integer minimumAge;
 
-    // ─── Important Notes (free-form bullet points from admin) ─────────────────
-
-    @ElementCollection // A hidden table will be created to store these instead of another table
+    @ElementCollection
     @CollectionTable(
-            name = "event_notes", // This tells Hibernate to add a foreign key column named event_id to the event_notes table, linking each note back to its parent event.
-            joinColumns = @JoinColumn(name = "event_id") //  We are explicitly naming the side-table event_notes
+            name = "event_notes",
+            joinColumns = @JoinColumn(name = "event_id")
     )
-    @Column(name = "note", columnDefinition = "TEXT") // 
-    @Builder.Default //  If someone builds an Event but forgets to provide importantNotes, it would normally default to null. By using = new ArrayList<>() combined with @Builder.Default, we guarantee it will always be an empty list instead of a NullPointerException waiting to happen.
+    @Column(name = "note", columnDefinition = "TEXT")
+    @Builder.Default
     private List<String> importantNotes = new ArrayList<>();
-    // e.g. ["Please carry your membership card", "Blocking seats not permitted"]
-
-    // ─── Contact ──────────────────────────────────────────────────────────────
 
     @Column
-    private String contactPersonName;            // e.g. "Mr. Keyur Patel, Marketing Manager"
+    private String contactPersonName;
 
     @Column
-    private String contactPersonPhone;           // e.g. "9462200225"
+    private String contactPersonPhone;
 
-    // ─── Status & Link ────────────────────────────────────────────────────────
-
-    @Enumerated(EnumType.STRING) // so that it is stored as a string DRAFT rather than 0 in database
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    @Builder.Default // if not provided, it will be DRAFT by default
-    private EventStatus status = EventStatus.DRAFT; 
+    @Builder.Default
+    private EventStatus status = EventStatus.DRAFT;
 
     @Column(unique = true)
-    private String uniqueEventLink;              // UUID slug: eventric.org/e/mere-mehboob-na-ja
-
-    // ─── Audit ────────────────────────────────────────────────────────────────
+    private String uniqueEventLink;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by", nullable = false)
