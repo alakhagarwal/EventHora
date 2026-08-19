@@ -12,13 +12,19 @@ export default function BookEventPage() {
 
   const [ev, setEv] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [quantity, setQuantity] = useState(1);
+  const [memberCount, setMemberCount] = useState(1);
+  const [guestCount, setGuestCount] = useState(0);
   const [busy, setBusy] = useState(false);
-  const quantityRef = useRef(1);
+  const memberCountRef = useRef(1);
+  const guestCountRef = useRef(0);
 
   useEffect(() => {
-    quantityRef.current = quantity;
-  }, [quantity]);
+    memberCountRef.current = memberCount;
+  }, [memberCount]);
+
+  useEffect(() => {
+    guestCountRef.current = guestCount;
+  }, [guestCount]);
 
   useEffect(() => {
     let cancelled = false;
@@ -28,9 +34,12 @@ export default function BookEventPage() {
           if (cancelled) return;
           setEv((current: any) => {
             const nextAvailable = Number(nextEvent?.availableCount ?? 0);
-            if (current && current.availableCount !== undefined && nextAvailable < quantityRef.current) {
+            if (current && current.availableCount !== undefined && nextAvailable < memberCountRef.current + guestCountRef.current) {
               toast.error("Seats are running low. Your quantity has been capped.");
-              setQuantity(Math.max(1, nextAvailable));
+              const newMember = Math.min(memberCountRef.current, nextAvailable);
+              const newGuest = Math.max(0, Math.min(guestCountRef.current, nextAvailable - newMember));
+              setMemberCount(Math.max(1, newMember));
+              setGuestCount(newGuest);
             }
             return nextEvent;
           });
@@ -56,6 +65,7 @@ export default function BookEventPage() {
         router.push("/login");
         return;
       }
+      const quantity = memberCount + guestCount;
       const availableCount = Number(ev?.availableCount ?? 0);
       if (ev?.isSoldOut || availableCount <= 0) {
         toast.error("This event is sold out.");
@@ -63,14 +73,18 @@ export default function BookEventPage() {
       }
       if (availableCount < quantity) {
         toast.error("Not enough seats remain for the selected quantity.");
-        setQuantity(Math.max(1, availableCount));
+        const newMember = Math.min(memberCount, availableCount);
+        const newGuest = Math.max(0, Math.min(guestCount, availableCount - newMember));
+        setMemberCount(Math.max(1, newMember));
+        setGuestCount(newGuest);
         return;
       }
       const sess = JSON.parse(raw);
       const res: any = await api.initiateBooking({
         sessionToken: sess.sessionToken,
         eventId: ev.id,
-        quantity,
+        memberQuantity: memberCount,
+        guestQuantity: guestCount,
         paymentPreference: "ONLINE",
       });
       localStorage.setItem(
@@ -111,11 +125,18 @@ export default function BookEventPage() {
       <div className="mx-auto max-w-lg px-4 py-12 text-navy/60">Loading…</div>
     );
 
-  const max = ev.maxTicketsPerMember || 4;
-  const ticketPrice = Number(ev.ticketPrice || 0);
-  const freeTickets = Number(ev.freeTicketsPerRegistration || 0);
-  const paidTickets = Math.max(0, quantity - freeTickets);
-  const total = ticketPrice * paidTickets;
+  const maxMemberTickets = ev.maxMemberTickets ?? 4;
+  const memberPrice = Number(ev.memberTicketPrice || 0);
+  const freeMemberTickets = Number(ev.freeMemberTickets || 0);
+  const maxGuestTickets = ev.maxGuestTickets || 0;
+  const guestPrice = Number(ev.guestTicketPrice || 0);
+  const freeGuestTickets = Number(ev.freeGuestTickets || 0);
+  const hasGuests = maxGuestTickets > 0;
+
+  const paidMemberTickets = Math.max(0, memberCount - freeMemberTickets);
+  const paidGuestTickets = Math.max(0, guestCount - freeGuestTickets);
+  const total = paidMemberTickets * memberPrice + paidGuestTickets * guestPrice;
+  const quantity = memberCount + guestCount;
   const availableCount = Number(ev.availableCount ?? 0);
   const isSoldOut = ev.isSoldOut || availableCount <= 0;
 
@@ -151,32 +172,80 @@ export default function BookEventPage() {
             </h1>
             <div className="mt-2 flex items-baseline gap-2">
               <span className="font-display text-2xl text-navy">
-                ₹{ticketPrice.toLocaleString("en-IN")}
+                ₹{memberPrice.toLocaleString("en-IN")}
               </span>
-              <span className="text-sm text-navy/50">/ticket</span>
+              <span className="text-sm text-navy/50">/member ticket</span>
             </div>
+            {hasGuests && (
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="font-display text-lg text-navy">
+                  ₹{guestPrice.toLocaleString("en-IN")}
+                </span>
+                <span className="text-sm text-navy/50">/guest ticket</span>
+              </div>
+            )}
+            {ev.freeMemberTickets > 0 && (
+              <p className="mt-1 text-xs text-green-700">
+                {ev.freeMemberTickets} free member ticket(s) per registration
+              </p>
+            )}
           </div>
 
+          {/* Member tickets */}
           <div>
-            <label className="label">Quantity <span className="text-navy/40">(max {max})</span></label>
+            <label className="label">Member tickets <span className="text-navy/40">(min 1, max {maxMemberTickets})</span></label>
             <div className="flex items-center gap-3 mt-1">
               <button
                 type="button"
-                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                onClick={() => setMemberCount((q) => Math.max(1, q - 1))}
                 className="w-9 h-9 rounded-lg border border-navy/20 text-navy text-lg font-semibold flex items-center justify-center hover:bg-navy/5 transition-colors"
               >
                 −
               </button>
-              <span className="font-display text-2xl text-navy w-8 text-center">{quantity}</span>
+              <span className="font-display text-2xl text-navy w-8 text-center">{memberCount}</span>
               <button
                 type="button"
-                onClick={() => setQuantity((q) => Math.min(max, q + 1))}
+                onClick={() => setMemberCount((q) => Math.min(maxMemberTickets, q + 1))}
                 className="w-9 h-9 rounded-lg border border-navy/20 text-navy text-lg font-semibold flex items-center justify-center hover:bg-navy/5 transition-colors"
               >
                 +
               </button>
             </div>
+            {freeMemberTickets > 0 && (
+              <p className="mt-1 text-xs text-navy/50">
+                First {freeMemberTickets} free — {Math.max(0, memberCount - freeMemberTickets)} paid × ₹{memberPrice.toLocaleString("en-IN")}
+              </p>
+            )}
           </div>
+
+          {/* Guest tickets */}
+          {hasGuests && (
+            <div className="mt-5">
+              <label className="label">Guest tickets <span className="text-navy/40">(max {maxGuestTickets})</span></label>
+              <div className="flex items-center gap-3 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setGuestCount((q) => Math.max(0, q - 1))}
+                  className="w-9 h-9 rounded-lg border border-navy/20 text-navy text-lg font-semibold flex items-center justify-center hover:bg-navy/5 transition-colors"
+                >
+                  −
+                </button>
+                <span className="font-display text-2xl text-navy w-8 text-center">{guestCount}</span>
+                <button
+                  type="button"
+                  onClick={() => setGuestCount((q) => Math.min(maxGuestTickets, q + 1))}
+                  className="w-9 h-9 rounded-lg border border-navy/20 text-navy text-lg font-semibold flex items-center justify-center hover:bg-navy/5 transition-colors"
+                >
+                  +
+                </button>
+              </div>
+              {freeGuestTickets > 0 && (
+                <p className="mt-1 text-xs text-navy/50">
+                  First {freeGuestTickets} free — {Math.max(0, guestCount - freeGuestTickets)} paid × ₹{guestPrice.toLocaleString("en-IN")}
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="mt-5">
             <label className="label">Payment Method</label>
@@ -189,10 +258,13 @@ export default function BookEventPage() {
 
           <div className="mt-5 rounded-xl bg-cream/60 border border-navy/10 px-4 py-3 flex justify-between items-center">
             <span className="text-sm text-navy/60">
-              {quantity} ticket{quantity > 1 ? "s" : ""}{paidTickets !== quantity ? ` (${paidTickets} paid)` : ""}
+              {quantity} ticket{quantity !== 1 ? "s" : ""}
+              {paidMemberTickets !== memberCount || paidGuestTickets !== guestCount
+                ? ` (${paidMemberTickets} member + ${paidGuestTickets} guest paid)`
+                : ""}
             </span>
             <span className="font-display text-xl text-navy">
-              {ticketPrice === 0 || total === 0 ? "Free" : `₹${total.toLocaleString("en-IN")}`}
+              {total === 0 ? "Free" : `₹${total.toLocaleString("en-IN")}`}
             </span>
           </div>
 

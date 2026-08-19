@@ -82,8 +82,10 @@ function MemberForm({ memberType, onDone }: { memberType: "INDIAN" | "OVERSEAS";
       if (res?.sessionToken) {
         clearSession();
         saveMemberSession(res);
+        onDone();
+      } else {
+        toast.error("Login failed — no session returned. Please try again.");
       }
-      onDone();
     } catch (e: any) { toast.error(e.message || "Verification failed"); } finally { setBusy(false); }
   };
 

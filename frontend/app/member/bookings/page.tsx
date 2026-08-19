@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Share2, Download, X } from "lucide-react";
 import { api } from "@/lib/api";
-import { getMemberSession } from "@/lib/auth";
+import { clearMemberSession, getMemberSession } from "@/lib/auth";
 import { toast } from "@/lib/toast";
 import SearchInput from "@/components/SearchInput";
 import EventSlider from "@/components/EventSlider";
@@ -92,7 +92,6 @@ export default function MemberBookingsPage() {
     const memberSession = getMemberSession();
     if (!memberSession?.sessionToken) {
       router.replace("/login");
-      setAuthReady(true);
       return;
     }
 
@@ -103,7 +102,13 @@ export default function MemberBookingsPage() {
         const sorted = [...(data || [])].sort((a, b) => new Date(b.bookedAt).getTime() - new Date(a.bookedAt).getTime());
         setBookings(sorted);
       })
-      .catch((err) => {
+      .catch((err: any) => {
+        if (err?.status === 401 || err?.status === 403 || /session|expired|unauthorized/i.test(err?.message || "")) {
+          clearMemberSession();
+          toast.error("Session expired. Please log in again.");
+          router.replace("/login");
+          return;
+        }
         toast.error(err?.message || "Failed to load bookings.");
         setBookings([]);
       })

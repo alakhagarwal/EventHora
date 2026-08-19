@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
+import AdminSidebar from "@/components/AdminSidebar";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import Toast from "@/components/Toast";
 import { ToastProvider } from "@/lib/toast";
@@ -26,7 +27,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen flex flex-col">
         <ToastProvider>
           <Navbar />
-          <main className="flex-1 mobile-safe-bottom">{children}</main>
+          <div className="flex flex-1 min-w-0">
+            <AdminSidebar />
+            <main className="flex-1 min-w-0 mobile-safe-bottom">{children}</main>
+          </div>
           <footer className="border-t border-navy/10 bg-white/60 hidden md:block">
             <div className="mx-auto max-w-7xl px-6 py-8 flex flex-col md:flex-row justify-between gap-4 text-sm text-navy/60">
               <div className="font-display text-navy text-lg">EventHora</div>

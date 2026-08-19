@@ -6,6 +6,15 @@ export const API_BASE =
 
 type Options = RequestInit & { auth?: boolean; json?: any };
 
+export type EventMedia = {
+  id: string;
+  mediaType: "PHOTO" | "VIDEO";
+  url: string;
+  caption: string | null;
+  sortOrder: number;
+  uploadedAt: string;
+};
+
 export type RegistrationResponse = {
   ticketReference: string;
   eventTitle: string;
@@ -93,16 +102,57 @@ export const api = {
       body: fd,
       headers: t ? { Authorization: `Bearer ${t}` } : undefined,
     });
-    if (!res.ok) throw new Error("Banner upload failed");
+    if (!res.ok) {
+      const text = await res.text();
+      const data = text ? (() => { try { return JSON.parse(text); } catch { return text; } })() : null;
+      const msg = (data && typeof data === "object" && (data.message || data.error)) || "Banner upload failed";
+      throw new Error(msg);
+    }
     return res.json();
   },
+
+  uploadEventPhoto: async (id: string, file: File, caption: string, sortOrder: number) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    if (caption) fd.append("caption", caption);
+    fd.append("sortOrder", String(sortOrder));
+    const t = getToken();
+    const res = await fetch(`${API_BASE}/api/events/${id}/media/photo`, {
+      method: "POST",
+      body: fd,
+      headers: t ? { Authorization: `Bearer ${t}` } : undefined,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      const data = text ? (() => { try { return JSON.parse(text); } catch { return text; } })() : null;
+      const msg = (data && typeof data === "object" && (data.message || data.error)) || "Photo upload failed";
+      throw new Error(msg);
+    }
+    return res.json();
+  },
+
+  addEventVideo: (id: string, url: string, caption: string, sortOrder: number) =>
+    apiFetch(`/api/events/${id}/media/video`, {
+      method: "POST",
+      json: { url, caption: caption || null, sortOrder },
+    }),
+
+  deleteEventMedia: (id: string, mediaId: string) =>
+    apiFetch(`/api/events/${id}/media/${mediaId}`, { method: "DELETE" }),
+
+  reorderEventMedia: (id: string, orderedIds: string[]) =>
+    apiFetch(`/api/events/${id}/media/reorder`, {
+      method: "PATCH",
+      json: { orderedIds },
+    }),
 
   verifyMember: (body: { memberId: string; identifier: string; memberType: "INDIAN" | "OVERSEAS" }) =>
     apiFetch("/api/registration/verify-member", { method: "POST", json: body, auth: false }),
   initiateBooking: (body: {
     sessionToken: string;
     eventId: string;
-    quantity: number;
+    memberQuantity: number;
+    guestQuantity: number;
     paymentPreference: "ONLINE" | "AT_GATE";
   }) => apiFetch("/api/registration/initiate", { method: "POST", json: body, auth: false }),
 
@@ -135,9 +185,9 @@ export const api = {
     memberId: string;
     memberType: "INDIAN" | "OVERSEAS";
     eventId: string;
-    quantity: number;
-    action: "PAY_AT_GATE" | "COMPLIMENTARY" | "CONFIRMED";
-    mobileNumber?: string;
+    memberQuantity: number;
+    guestQuantity: number;
+    action: "PAY_AT_GATE" | "COMPLIMENTARY";
   }) => apiFetch("/api/admin/bookings/register", { method: "POST", json: body }),
 
   recordGatePayment: (body: { ticketReference: string; action: "PAID" | "COMPLIMENTARY" }) =>

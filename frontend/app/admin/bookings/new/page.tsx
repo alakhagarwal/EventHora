@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Minus, Plus, Search, ChevronDown, CheckCircle2, Wallet, Gift } from "lucide-react";
+import { Minus, Plus, Search, ChevronDown, Wallet, Gift } from "lucide-react";
 import { api } from "@/lib/api";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { toast } from "@/lib/toast";
@@ -16,9 +16,12 @@ type PublishedEvent = {
   eventDate?: string;
   startTime?: string;
   status?: string;
-  ticketPrice?: number;
-  maxTicketsPerMember?: number;
-  freeTicketsPerRegistration?: number;
+  memberTicketPrice?: number;
+  guestTicketPrice?: number;
+  maxMemberTickets?: number;
+  freeMemberTickets?: number;
+  maxGuestTickets?: number;
+  freeGuestTickets?: number;
   venue?: string;
   availableCount?: number;
   totalCapacity?: number;
@@ -50,18 +53,20 @@ export default function AdminDirectBookingPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [action, setAction] = useState<"PAY_AT_GATE" | "CONFIRMED" | "COMPLIMENTARY">("CONFIRMED");
+  const [action, setAction] = useState<"PAY_AT_GATE" | "COMPLIMENTARY">("PAY_AT_GATE");
   const [mobileNumber, setMobileNumber] = useState("");
   const [form, setForm] = useState<{
     eventId: string;
     memberId: string;
     memberType: "INDIAN" | "OVERSEAS";
-    quantity: number;
+    memberCount: number;
+    guestCount: number;
   }>({
     eventId: "",
     memberId: "",
     memberType: "INDIAN",
-    quantity: 1,
+    memberCount: 1,
+    guestCount: 0,
   });
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -123,16 +128,18 @@ export default function AdminDirectBookingPage() {
 
   useEffect(() => {
     if (!selectedEvent) return;
-    const max = selectedEvent.maxTicketsPerMember || 1;
+    const maxMember = selectedEvent.maxMemberTickets ?? 1;
+    const maxGuest = selectedEvent.maxGuestTickets ?? 0;
     setForm((current) => ({
       ...current,
-      quantity: Math.min(current.quantity || 1, max),
+      memberCount: Math.min(current.memberCount || 1, maxMember),
+      guestCount: Math.min(current.guestCount || 0, maxGuest),
     }));
   }, [selectedEvent]);
 
   useEffect(() => {
     if (role === "STAFF" && action === "COMPLIMENTARY") {
-      setAction("CONFIRMED");
+      setAction("PAY_AT_GATE");
     }
   }, [role, action]);
 
@@ -170,17 +177,28 @@ export default function AdminDirectBookingPage() {
     }
   };
 
-  const ticketPrice = Number(selectedEvent?.ticketPrice || 0);
-  const maxTickets = Number(selectedEvent?.maxTicketsPerMember || 1);
-  const freeTickets = Number(selectedEvent?.freeTicketsPerRegistration || 0);
-  const paidTickets = Math.max(0, form.quantity - freeTickets);
-  const orderTotal = ticketPrice * paidTickets;
+  const memberPrice = Number(selectedEvent?.memberTicketPrice ?? 0);
+  const guestPrice = Number(selectedEvent?.guestTicketPrice ?? 0);
+  const maxMemberTickets = Number(selectedEvent?.maxMemberTickets ?? 1);
+  const freeMemberTickets = Number(selectedEvent?.freeMemberTickets || 0);
+  const maxGuestTickets = Number(selectedEvent?.maxGuestTickets || 0);
+  const freeGuestTickets = Number(selectedEvent?.freeGuestTickets || 0);
+  const hasGuests = maxGuestTickets > 0;
+
+  const paidMemberTickets = Math.max(0, form.memberCount - freeMemberTickets);
+  const paidGuestTickets = Math.max(0, form.guestCount - freeGuestTickets);
+  const orderTotal = paidMemberTickets * memberPrice + paidGuestTickets * guestPrice;
   const isFreeEvent = orderTotal <= 0;
 
-  const updateQuantity = (delta: number) => {
+  const updateQuantity = (tier: "member" | "guest", delta: number) => {
     setForm((current) => {
-      const next = Math.min(maxTickets, Math.max(1, current.quantity + delta));
-      return { ...current, quantity: next };
+      if (tier === "member") {
+        const next = Math.min(maxMemberTickets, Math.max(1, current.memberCount + delta));
+        return { ...current, memberCount: next };
+      } else {
+        const next = Math.min(maxGuestTickets, Math.max(0, current.guestCount + delta));
+        return { ...current, guestCount: next };
+      }
     });
   };
 
@@ -202,20 +220,22 @@ export default function AdminDirectBookingPage() {
       return;
     }
 
+    const quantity = form.memberCount + form.guestCount;
+
     setSubmitting(true);
     try {
       const response = await api.adminRegisterMember({
         memberId: trimmedMemberId,
         memberType: form.memberType,
         eventId: selectedEvent.id,
-        quantity: form.quantity,
+        memberQuantity: form.memberCount,
+        guestQuantity: form.guestCount,
         action,
-        mobileNumber: mobileNumber || undefined,
       });
       toast.success(`Member registered: ${response.ticketReference}`);
       const params = new URLSearchParams({
         ticketReference: response.ticketReference || "",
-        quantity: String(response.quantity || form.quantity),
+        quantity: String(response.quantity || quantity),
         totalAmount: String(response.totalAmount ?? 0),
         paymentStatus: response.paymentStatus || "FREE",
         memberId: response.memberId || trimmedMemberId,
@@ -331,51 +351,76 @@ export default function AdminDirectBookingPage() {
               type="tel"
               className="input"
               placeholder="e.g. 9876543210"
+              pattern="[0-9]{10}"
+              maxLength={10}
               value={mobileNumber}
-              onChange={(e) => setMobileNumber(e.target.value)}
+              onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, "").slice(0, 10))}
             />
+            {mobileNumber && mobileNumber.length < 10 && (
+              <p className="mt-1 text-xs text-red-600">Enter exactly 10 digits</p>
+            )}
           </div>
 
-          {/* Member Type + Quantity */}
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="label">Member Type</label>
-              <div className="flex gap-3">
-                {(["INDIAN", "OVERSEAS"] as const).map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => setForm((current) => ({ ...current, memberType: type }))}
-                    className={`btn ${form.memberType === type ? "btn-dark" : "btn-outline"}`}
-                  >
-                    {type}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="label">Quantity</label>
-              <div className="flex items-center gap-3">
-                <button type="button" className="btn-outline" onClick={() => updateQuantity(-1)}><Minus className="h-4 w-4" /></button>
-                <input
-                  type="number"
-                  min={1}
-                  max={maxTickets}
-                  className="input text-center"
-                  value={form.quantity}
-                  onChange={(e) => setForm((current) => ({ ...current, quantity: Math.max(1, Math.min(maxTickets, Number(e.target.value) || 1)) }))}
-                />
-                <button type="button" className="btn-outline" onClick={() => updateQuantity(1)}><Plus className="h-4 w-4" /></button>
-              </div>
-              <p className="mt-1 text-xs text-navy/60">Max {maxTickets} ticket{maxTickets === 1 ? "" : "s"} per member</p>
+          {/* Member Type */}
+          <div>
+            <label className="label">Member Type</label>
+            <div className="flex gap-3">
+              {(["INDIAN", "OVERSEAS"] as const).map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setForm((current) => ({ ...current, memberType: type }))}
+                  className={`btn ${form.memberType === type ? "btn-dark" : "btn-outline"}`}
+                >
+                  {type}
+                </button>
+              ))}
             </div>
           </div>
+
+          {/* Member tickets */}
+          <div>
+            <label className="label">Member tickets</label>
+            <div className="flex items-center gap-3">
+              <button type="button" className="btn-outline" onClick={() => updateQuantity("member", -1)}><Minus className="h-4 w-4" /></button>
+              <input
+                type="number"
+                min={1}
+                max={maxMemberTickets}
+                className="input text-center"
+                value={form.memberCount}
+                onChange={(e) => setForm((current) => ({ ...current, memberCount: Math.max(1, Math.min(maxMemberTickets, Number(e.target.value) || 1)) }))}
+              />
+              <button type="button" className="btn-outline" onClick={() => updateQuantity("member", 1)}><Plus className="h-4 w-4" /></button>
+            </div>
+            <p className="mt-1 text-xs text-navy/60">Max {maxMemberTickets} ticket{maxMemberTickets === 1 ? "" : "s"} per member</p>
+          </div>
+
+          {/* Guest tickets */}
+          {hasGuests && (
+            <div>
+              <label className="label">Guest tickets</label>
+              <div className="flex items-center gap-3">
+                <button type="button" className="btn-outline" onClick={() => updateQuantity("guest", -1)}><Minus className="h-4 w-4" /></button>
+                <input
+                  type="number"
+                  min={0}
+                  max={maxGuestTickets}
+                  className="input text-center"
+                  value={form.guestCount}
+                  onChange={(e) => setForm((current) => ({ ...current, guestCount: Math.max(0, Math.min(maxGuestTickets, Number(e.target.value) || 0)) }))}
+                />
+                <button type="button" className="btn-outline" onClick={() => updateQuantity("guest", 1)}><Plus className="h-4 w-4" /></button>
+              </div>
+              <p className="mt-1 text-xs text-navy/60">Max {maxGuestTickets} guest ticket{maxGuestTickets === 1 ? "" : "s"}</p>
+            </div>
+          )}
 
           {/* Action */}
           {!isFreeEvent && (
             <div>
               <label className="label">Payment Action</label>
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-2">
                 <button
                   type="button"
                   onClick={() => setAction("PAY_AT_GATE")}
@@ -385,16 +430,6 @@ export default function AdminDirectBookingPage() {
                     <Wallet className="h-4 w-4" /> Pay at Gate
                   </span>
                   <span className="text-xs text-navy/60">Member pays cash/card at the venue</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAction("CONFIRMED")}
-                  className={`card flex flex-col items-start gap-1 p-3 text-left transition-colors ${action === "CONFIRMED" ? "border-navy ring-2 ring-navy/20" : "hover:border-navy/30"}`}
-                >
-                  <span className="flex items-center gap-2 text-sm font-semibold text-navy">
-                    <CheckCircle2 className="h-4 w-4 text-green-600" /> Payment Verified
-                  </span>
-                  <span className="text-xs text-navy/60">Payment already collected</span>
                 </button>
                 {role === "ADMIN" && (
                   <button
@@ -416,11 +451,15 @@ export default function AdminDirectBookingPage() {
           <div className="card bg-navy/5 p-4">
             <div className="label">Order Summary</div>
             <div className="text-lg font-semibold text-navy">
-              {isFreeEvent ? "Free" : `${paidTickets} x ${formatAmount(ticketPrice)} = ${formatAmount(orderTotal)}`}
+              {isFreeEvent
+                ? "Free"
+                : `${paidMemberTickets} × ${formatAmount(memberPrice)}${paidGuestTickets > 0 ? ` + ${paidGuestTickets} × ${formatAmount(guestPrice)}` : ""} = ${formatAmount(orderTotal)}`}
             </div>
             <div className="mt-1 text-sm text-navy/70">
-              {form.quantity} ticket{form.quantity > 1 ? "s" : ""}
-              {paidTickets !== form.quantity ? ` (${paidTickets} paid, ${freeTickets} free)` : ""}
+              {form.memberCount + form.guestCount} ticket{(form.memberCount + form.guestCount) !== 1 ? "s" : ""}
+              {paidMemberTickets !== form.memberCount || paidGuestTickets !== form.guestCount
+                ? ` (${paidMemberTickets} member + ${paidGuestTickets} guest paid)`
+                : ""}
             </div>
             <div className="mt-1 text-sm text-navy/70">
               {selectedEvent ? `${selectedEvent.title} \u00b7 ${formatDateTime(selectedEvent.eventDate, selectedEvent.startTime)}` : "Select an event to continue"}

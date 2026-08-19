@@ -2,16 +2,28 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { api, displayStatus } from "@/lib/api";
+import { api, displayStatus, type EventMedia } from "@/lib/api";
 import { getSession } from "@/lib/auth";
-import { Calendar, Clock, MapPin, Phone, User, ArrowLeft } from "lucide-react";
+import { Calendar, Clock, MapPin, Phone, User, ArrowLeft, ChevronLeft, ChevronRight, Play } from "lucide-react";
 import { toast } from "@/lib/toast";
+
+function toEmbedUrl(url: string): string {
+  const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?#]+)/);
+  if (ytMatch) return `https://www.youtube-nocookie.com/embed/${ytMatch[1]}`;
+  return url;
+}
+
+function ytThumbnail(url: string): string | null {
+  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?#]+)/);
+  return m ? `https://img.youtube.com/vi/${m[1]}/hqdefault.jpg` : null;
+}
 
 export default function EventDetails() {
   const { link } = useParams<{ link: string }>();
   const router = useRouter();
   const [ev, setEv] = useState<any>(null);
   const [isStaffOrAdmin, setIsStaffOrAdmin] = useState(false);
+  const [slideIdx, setSlideIdx] = useState(0);
   const previousSoldOut = useRef(false);
 
   useEffect(() => {
@@ -44,6 +56,15 @@ export default function EventDetails() {
       window.clearInterval(interval);
     };
   }, [link]);
+
+  const photos: EventMedia[] = (ev?.media ?? []).filter((m: EventMedia) => m.mediaType === "PHOTO");
+  const videos: EventMedia[] = (ev?.media ?? []).filter((m: EventMedia) => m.mediaType === "VIDEO");
+
+  useEffect(() => {
+    if (photos.length > 0) {
+      setSlideIdx((i) => Math.min(i, photos.length - 1));
+    }
+  }, [photos.length]);
 
   if (!ev)
     return (
@@ -151,6 +172,84 @@ export default function EventDetails() {
                       <li key={i}>{n}</li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {/* Photo slideshow */}
+              {photos.length > 0 && (
+                <div className="mt-6 md:mt-8">
+                  <h3 className="font-display text-lg md:text-xl text-navy mb-3">
+                    Photos ({photos.length})
+                  </h3>
+                  <div className="relative aspect-video rounded-lg overflow-hidden bg-navy/5">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={photos[slideIdx]?.url}
+                      alt={photos[slideIdx]?.caption || `Photo ${slideIdx + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                    {photos[slideIdx]?.caption && (
+                      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent p-4">
+                        <p className="text-sm text-white">{photos[slideIdx].caption}</p>
+                      </div>
+                    )}
+                    {photos.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white rounded-full p-1"
+                          onClick={() => setSlideIdx((i) => (i - 1 + photos.length) % photos.length)}
+                        >
+                          <ChevronLeft className="h-5 w-5" />
+                        </button>
+                        <button
+                          type="button"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white rounded-full p-1"
+                          onClick={() => setSlideIdx((i) => (i + 1) % photos.length)}
+                        >
+                          <ChevronRight className="h-5 w-5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {photos.length > 1 && (
+                    <div className="flex justify-center gap-1.5 mt-3">
+                      {photos.map((_: any, i: number) => (
+                        <button
+                          key={i}
+                          type="button"
+                          className={`w-2 h-2 rounded-full transition-colors ${i === slideIdx ? "bg-navy" : "bg-navy/20"}`}
+                          onClick={() => setSlideIdx(i)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Videos */}
+              {videos.length > 0 && (
+                <div className="mt-6 md:mt-8">
+                  <h3 className="font-display text-lg md:text-xl text-navy mb-3">
+                    Videos ({videos.length})
+                  </h3>
+                  <div className="space-y-4">
+                    {videos.map((vid) => (
+                      <div key={vid.id}>
+                        <div className="relative aspect-video rounded-lg overflow-hidden bg-navy/5">
+                          <iframe
+                            src={toEmbedUrl(vid.url)}
+                            className="w-full h-full"
+                            allowFullScreen
+                            title={vid.caption || "Video"}
+                          />
+                        </div>
+                        {vid.caption && (
+                          <p className="mt-1 text-xs text-navy/60">{vid.caption}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

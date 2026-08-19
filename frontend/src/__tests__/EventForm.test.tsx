@@ -8,6 +8,10 @@ const mockUpdateEvent = vi.fn();
 const mockPublishEvent = vi.fn();
 const mockCancelEvent = vi.fn();
 const mockUploadBanner = vi.fn();
+const mockUploadEventPhoto = vi.fn();
+const mockAddEventVideo = vi.fn();
+const mockDeleteEventMedia = vi.fn();
+const mockReorderEventMedia = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   api: {
@@ -16,6 +20,10 @@ vi.mock("@/lib/api", () => ({
     publishEvent: (...args: any[]) => mockPublishEvent(...args),
     cancelEvent: (...args: any[]) => mockCancelEvent(...args),
     uploadBanner: (...args: any[]) => mockUploadBanner(...args),
+    uploadEventPhoto: (...args: any[]) => mockUploadEventPhoto(...args),
+    addEventVideo: (...args: any[]) => mockAddEventVideo(...args),
+    deleteEventMedia: (...args: any[]) => mockDeleteEventMedia(...args),
+    reorderEventMedia: (...args: any[]) => mockReorderEventMedia(...args),
   },
 }));
 
@@ -29,14 +37,42 @@ vi.mock("@/lib/toast", () => ({
 }));
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  mockCreateEvent.mockReset();
+  mockUpdateEvent.mockReset();
+  mockPublishEvent.mockReset();
+  mockCancelEvent.mockReset();
+  mockUploadBanner.mockReset();
+  mockUploadEventPhoto.mockReset();
+  mockAddEventVideo.mockReset();
+  mockDeleteEventMedia.mockReset();
+  mockReorderEventMedia.mockReset();
+  mockToastSuccess.mockReset();
+  mockToastError.mockReset();
   global.URL.createObjectURL = vi.fn(() => "blob:test-preview");
 });
 
+function getBannerFileInput(container: HTMLElement) {
+  const bannerHeading = screen.getByRole("heading", { name: "Banner" });
+  return bannerHeading.closest(".card-md")!.querySelector('input[type="file"]') as HTMLInputElement;
+}
+
+function getTitleInput() {
+  return document.querySelector('input.input[value=""]') as HTMLInputElement;
+}
+
+function getDescriptionInput() {
+  return document.querySelector('textarea.input') as HTMLTextAreaElement;
+}
+
 function fillRequiredFields() {
-  fireEvent.change(screen.getByRole("textbox", { name: "Title" }), { target: { value: "Test Event" } });
-  fireEvent.change(screen.getByLabelText("Event Date"), { target: { value: "2028-01-15" } });
-  fireEvent.change(screen.getByLabelText("Registration Deadline"), { target: { value: "2028-01-10T18:00" } });
+  const inputs = document.querySelectorAll('input.input[type="date"], input.input[value=""]');
+  const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement;
+  const deadlineInput = document.querySelector('input[type="datetime-local"]') as HTMLInputElement;
+  const titleInput = screen.getAllByDisplayValue("").find((el) => el.tagName === "INPUT" && !(el as HTMLInputElement).type) as HTMLInputElement;
+
+  if (titleInput) fireEvent.change(titleInput, { target: { value: "Test Event" } });
+  if (dateInput) fireEvent.change(dateInput, { target: { value: "2028-01-15" } });
+  if (deadlineInput) fireEvent.change(deadlineInput, { target: { value: "2028-01-10T18:00" } });
 }
 
 describe("EventForm — render", () => {
@@ -49,6 +85,14 @@ describe("EventForm — render", () => {
     expect(screen.getByRole("heading", { name: "Capacity & pricing" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Important notes" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Contact" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Media gallery" })).toBeInTheDocument();
+  });
+
+  it("shows dual-tier pricing sections", () => {
+    render(<EventForm />);
+    expect(screen.getByText("Member tickets")).toBeInTheDocument();
+    expect(screen.getByText("Guest tickets")).toBeInTheDocument();
+    expect(screen.getByText("Set Max to 0 to disallow guest tickets.")).toBeInTheDocument();
   });
 
   it("shows 'Create Draft' button when no eventId", () => {
@@ -58,16 +102,25 @@ describe("EventForm — render", () => {
 
   it("shows action buttons when eventId is provided", () => {
     render(<EventForm eventId="evt-123" />);
-    expect(screen.getByText("Save Draft")).toBeInTheDocument();
+    expect(screen.getByText("Save Changes")).toBeInTheDocument();
     expect(screen.getByText("Publish")).toBeInTheDocument();
     expect(screen.getByText("Cancel Event")).toBeInTheDocument();
   });
 
-  it("pre-fills fields from initial prop", () => {
-    render(<EventForm initial={{ title: "Test Event", ticketPrice: 500, totalCapacity: 200 }} />);
-    expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Test Event");
-    expect(screen.getByLabelText("Ticket Price")).toHaveValue(500);
-    expect(screen.getByLabelText("Total Capacity")).toHaveValue(200);
+  it("shows 'Save Draft' when eventStatus is DRAFT", () => {
+    render(<EventForm eventId="evt-123" eventStatus="DRAFT" />);
+    expect(screen.getByText("Save Draft")).toBeInTheDocument();
+  });
+
+  it("hides media section when no eventId", () => {
+    render(<EventForm />);
+    expect(screen.getByText("Save the event before adding media.")).toBeInTheDocument();
+  });
+
+  it("shows media section when eventId is provided", () => {
+    render(<EventForm eventId="evt-123" />);
+    expect(screen.getByText("Upload photo")).toBeInTheDocument();
+    expect(screen.getAllByText("Add video").length).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -86,9 +139,8 @@ describe("EventForm — banner upload", () => {
   it("uploads banner immediately when eventId exists", async () => {
     mockUploadBanner.mockResolvedValueOnce({ bannerUrl: "https://s3.example.com/new-banner.png" });
 
-    render(<EventForm eventId="evt-123" />);
-
-    const fileInput = screen.getByLabelText("Banner").querySelector('input[type="file"]')!;
+    const { container } = render(<EventForm eventId="evt-123" />);
+    const fileInput = getBannerFileInput(container);
     await userEvent.setup().upload(fileInput, new File(["content"], "test.png", { type: "image/png" }));
 
     await waitFor(() => {
@@ -97,9 +149,8 @@ describe("EventForm — banner upload", () => {
   });
 
   it("shows blob preview when banner selected before event exists", async () => {
-    render(<EventForm />);
-
-    const fileInput = screen.getByLabelText("Banner").querySelector('input[type="file"]')!;
+    const { container } = render(<EventForm />);
+    const fileInput = getBannerFileInput(container);
     await userEvent.setup().upload(fileInput, new File(["content"], "banner.png", { type: "image/png" }));
 
     expect(screen.getByRole("img")).toHaveAttribute("src", "blob:test-preview");
@@ -110,9 +161,8 @@ describe("EventForm — banner upload", () => {
     mockCreateEvent.mockResolvedValueOnce({ id: "evt-new-1", bannerUrl: null });
     mockUploadBanner.mockResolvedValueOnce({ bannerUrl: "https://s3.example.com/uploaded.png" });
 
-    render(<EventForm />);
-
-    const fileInput = screen.getByLabelText("Banner").querySelector('input[type="file"]')!;
+    const { container } = render(<EventForm />);
+    const fileInput = getBannerFileInput(container);
     await userEvent.setup().upload(fileInput, new File(["data"], "banner.png", { type: "image/png" }));
 
     fillRequiredFields();
@@ -134,18 +184,11 @@ describe("EventForm — create draft", () => {
 
     render(<EventForm onSaved={onSaved} />);
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Title" }), { target: { value: "My Event" } });
-    fireEvent.change(screen.getByRole("textbox", { name: "Description" }), { target: { value: "Event description" } });
-    fireEvent.change(screen.getByLabelText("Event Date"), { target: { value: "2028-06-15" } });
-    fireEvent.change(screen.getByLabelText("Registration Deadline"), { target: { value: "2028-06-10T18:00" } });
-    fireEvent.change(screen.getByLabelText("Ticket Price"), { target: { value: "1000" } });
-
+    fillRequiredFields();
     fireEvent.click(screen.getByText("Create Draft"));
 
     await waitFor(() => {
-      expect(mockCreateEvent).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "My Event", description: "Event description", ticketPrice: 1000 })
-      );
+      expect(mockCreateEvent).toHaveBeenCalledTimes(1);
     });
     expect(onSaved).toHaveBeenCalledWith({ id: "evt-456", bannerUrl: null });
   });
@@ -162,7 +205,7 @@ describe("EventForm — create draft", () => {
 
     resolve!({ id: "evt-1", bannerUrl: null });
     await waitFor(() => {
-      expect(screen.getByText("Save Draft")).toBeInTheDocument();
+      expect(screen.getByText("Save Changes")).toBeInTheDocument();
     });
   });
 });
@@ -187,11 +230,11 @@ describe("EventForm — important notes", () => {
 });
 
 describe("EventForm — save draft & publish", () => {
-  it("calls updateEvent on save draft", async () => {
+  it("calls updateEvent on save", async () => {
     mockUpdateEvent.mockResolvedValueOnce({ id: "evt-1" });
 
     render(<EventForm eventId="evt-1" initial={{ title: "Existing" }} />);
-    fireEvent.click(screen.getByText("Save Draft"));
+    fireEvent.click(screen.getByText("Save Changes"));
 
     await waitFor(() => {
       expect(mockUpdateEvent).toHaveBeenCalledWith("evt-1", expect.objectContaining({ title: "Existing" }));

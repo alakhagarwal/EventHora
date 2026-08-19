@@ -134,24 +134,13 @@ export default function Navbar() {
 
           {/* Center: desktop nav links */}
           <nav className="hidden md:flex items-center gap-8">
-            <Link href="/" className={linkCls("/")}>Home</Link>
+            {!is_staff_or_admin && <Link href="/" className={linkCls("/")}>Home</Link>}
             {!is_staff_or_admin && <Link href="/events" className={linkCls("/events")}>Events</Link>}
-            {is_staff_or_admin && (
-              <Link href="/staff" className={linkCls("/staff")}>Gate Scanner</Link>
-            )}
-            {session?.role === "ADMIN" && (
-              <>
-                <Link href="/admin/dashboard" className={linkCls("/admin/dashboard")}>Dashboard</Link>
-                <Link href="/admin/my-events" className={linkCls("/admin/my-events")}>My Events</Link>
-                <Link href="/admin/bookings/new" className={linkCls("/admin/bookings/new")}>Register Member</Link>
-                <Link href="/admin/users" className={linkCls("/admin/users")}>Users</Link>
-              </>
-            )}
             {!session && memberSession && (
               <Link href="/member/bookings" className={linkCls("/member/bookings")}>My Bookings</Link>
             )}
-            {session && <Link href="/profile" className={linkCls("/profile")}>Profile</Link>}
-            {!session && memberSession && (
+            {!is_staff_or_admin && session && <Link href="/profile" className={linkCls("/profile")}>Profile</Link>}
+            {!is_staff_or_admin && !session && memberSession && (
               <Link href="/member/profile" className={linkCls("/member/profile")}>Profile</Link>
             )}
           </nav>

@@ -65,6 +65,28 @@ function LoginIcon({ active }: { active: boolean }) {
   );
 }
 
+function DashboardIcon({ active }: { active: boolean }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round"
+      className="h-5 w-5">
+      <rect x="3" y="3" width="7" height="9" rx="1" /><rect x="14" y="3" width="7" height="5" rx="1" />
+      <rect x="14" y="12" width="7" height="9" rx="1" /><rect x="3" y="16" width="7" height="5" rx="1" />
+    </svg>
+  );
+}
+
+function ScanIcon({ active }: { active: boolean }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round"
+      className="h-5 w-5">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+      <circle cx="12" cy="13" r="4" />
+    </svg>
+  );
+}
+
 /* ── Nav item type ── */
 type NavItem = {
   label: string;
@@ -75,23 +97,26 @@ type NavItem = {
 
 /* ── Build nav items based on role ── */
 function getNavItems(session: Session, hasMemberSession: boolean): NavItem[] {
-  const items: NavItem[] = [
-    { label: "Home", href: "/", icon: HomeIcon, matchPaths: ["/"] },
-  ];
+  const isStaffOrAdmin = session?.role === "STAFF" || session?.role === "ADMIN";
+  const items: NavItem[] = [];
 
-  // Admins land on My Events; everyone else gets the public Events listing
+  if (isStaffOrAdmin) {
+    items.push({ label: "Dashboard", href: "/admin/dashboard", icon: DashboardIcon, matchPaths: ["/admin/dashboard"] });
+    items.push({ label: "Gate Scanner", href: "/staff", icon: ScanIcon, matchPaths: ["/staff", "/staff/scan"] });
+  } else {
+    items.push({ label: "Home", href: "/", icon: HomeIcon, matchPaths: ["/"] });
+  }
+
   if (session?.role === "ADMIN") {
     items.push({ label: "My Events", href: "/admin/my-events", icon: CalendarIcon, matchPaths: ["/admin/my-events"] });
-  } else {
+  } else if (!isStaffOrAdmin) {
     items.push({ label: "Events", href: "/events", icon: CalendarIcon, matchPaths: ["/events"] });
   }
 
-  // Members get a Bookings shortcut
   if (!session && hasMemberSession) {
     items.push({ label: "Bookings", href: "/member/bookings", icon: BookingsIcon, matchPaths: ["/member/bookings"] });
   }
 
-  // Profile for admin/staff (shared) or members (own page); Sign In for anonymous guests
   if (session) {
     items.push({ label: "Profile", href: "/profile", icon: UserIcon, matchPaths: ["/profile"] });
   } else if (hasMemberSession) {
